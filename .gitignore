@@ -2,10 +2,7 @@
 .vs/
 *.user
 *.suo
-*.ncb
-*.opt
 *.aps
-*.plg
 *.sdf
 *.opensdf
 *.VC.db
