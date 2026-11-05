@@ -1,0 +1,51 @@
+RPN.EXE              Reverse Polish Notation Calculator
+-------------------------------------------------------
+Written by:          Bruce Kelley  <no longer at Microsoft>
+Current Owner:       Dan Lovinger  DanLo@microsoft.com
+Date:                3 April 2000        Version-1.13
+
+Platforms:           Intel versions of Windows
+
+RPN is a Reverse Polish Notation calculator using a 4-level stack, similar
+in operation to many Hewlett-Packard calculators.  It has two modes: Binary
+and Floating Point.  The binary mode is great for hex/decimal/binary
+calculations and conversions.  The floating point mode has all the operations
+you would expect.  Each mode also has a "Help-Keys Mode" in which you can get
+a pop-up description of what every key does.  Find this under the Help menu.
+
+New in version 1.10: Save and restore the state and stack in the registry.
+
+Fixed in version 1.11: Bug with window position that caused RPN to be
+displayed off the screen.
+
+New in version 1.12: word sizes 8/16/64 added, display cleanup, adorned
+numbers, bunch of code collapsing between the float/binary calcs, enter mode
+fixups for unary operators, unary add/subtract/shift operators on keyboard,
+right shift is now arithmetic when signed integers are in use, use of HP-like
+'!' flash to flag error as opposed to beeping.
+
+New in version 1.13: tooltips, fixed decimal radix mode restore
+
+Future ideas:
+
+* figure out how to get the error/help popups to center on the window (probably
+  means not using MessageBox)
+
+* make a toggle for adornment of numbers (allow changing of split location,
+  etc.)
+
+* fix font handling so we can use a small point font and be able to support
+  binary display on 64bit word sizes without an acre of screen space (this
+  may involve rewriting the displayengine entirely in something less primitive
+  than original Win32 (like MFC), a bit of a project for now)
+  
+* rip off, or at least allow toggling of, the buttons below the display box
+  (who needs them once you know the keybindings?)
+  
+* cast the float/binary stacks between each other on mode switch (but the
+  current behavior is somewhat useful, this may not be worth worrying about)
+
+* fixed-precision display for the floating calculator
+
+* use an infinte precision library for floats
+

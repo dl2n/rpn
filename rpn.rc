@@ -1,0 +1,430 @@
+//Microsoft Developer Studio generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#define APSTUDIO_HIDDEN_SYMBOLS
+#include "windows.h"
+#undef APSTUDIO_HIDDEN_SYMBOLS
+#include "rpn.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+RPN_ICON                ICON    DISCARDABLE     "rpn.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+RPN_DIALOG DIALOG DISCARDABLE  0, 0, 144, 137
+STYLE WS_MINIMIZEBOX | WS_CAPTION | WS_SYSMENU
+CAPTION "RPN Calculator"
+MENU RPN_MENU
+CLASS "Rpn"
+FONT 10, "System"
+BEGIN
+    CONTROL         "",IDD_DISPLAY,"Display",0x0,0,0,144,40
+    PUSHBUTTON      "D",68,2,42,20,14
+    PUSHBUTTON      "A",65,2,58,20,14
+    PUSHBUTTON      "7",55,2,74,20,14
+    PUSHBUTTON      "4",52,2,90,20,14
+    PUSHBUTTON      "1",49,2,106,20,14
+    PUSHBUTTON      "0",48,2,122,20,14
+    PUSHBUTTON      "E",69,26,42,20,14
+    PUSHBUTTON      "B",66,26,58,20,14
+    PUSHBUTTON      "8",56,26,74,20,14
+    PUSHBUTTON      "5",53,26,90,20,14
+    PUSHBUTTON      "2",50,26,106,20,14
+    PUSHBUTTON      "Enter",ENTER,26,122,44,14
+    PUSHBUTTON      "F",70,50,42,20,14
+    PUSHBUTTON      "C",67,50,58,20,14
+    PUSHBUTTON      "9",57,50,74,20,14
+    PUSHBUTTON      "6",54,50,90,20,14
+    PUSHBUTTON      "3",51,50,106,20,14
+    PUSHBUTTON      "K",75,74,42,20,14
+    PUSHBUTTON      "chs",83,74,58,20,14
+    PUSHBUTTON      "R-dn",ROLL_DOWN,74,74,20,14
+    PUSHBUTTON      "x<>y",SWAP_KEY,74,90,20,14
+    PUSHBUTTON      "clx",DELETE_KEY,74,106,20,14
+    PUSHBUTTON      "<--",BACKSPACE,74,122,20,14
+    PUSHBUTTON      "and",38,98,42,20,14
+    PUSHBUTTON      "or",124,98,58,20,14
+    PUSHBUTTON      "xor",94,98,74,20,14
+    PUSHBUTTON      "<<",60,98,90,20,14
+    PUSHBUTTON      ">>",62,98,106,20,14
+    PUSHBUTTON      "not",NOT_KEY,98,122,20,14
+    PUSHBUTTON      "+",43,122,42,20,14
+    PUSHBUTTON      "--",45,122,58,20,14
+    PUSHBUTTON      "*",42,122,74,20,14
+    PUSHBUTTON      "/",47,122,90,20,14
+    PUSHBUTTON      "%",37,122,106,20,14
+    PUSHBUTTON      "LB",76,122,122,20,14
+END
+
+ABOUTBOX DIALOG DISCARDABLE  22, 16, 186, 85
+STYLE DS_MODALFRAME | WS_CAPTION | WS_SYSMENU
+CAPTION "About RPN"
+FONT 8, "MS Sans Serif"
+BEGIN
+    CTEXT           "RPN Hex Calculator",IDC_STATIC,63,9,64,8
+    CTEXT           "Written by: BruceK, September 5, 1997",IDC_STATIC,33,17,
+                    124,8
+    CTEXT           "Version 1.13",IDC_STATIC,91,38,40,8
+    CTEXT           "Copyright 1990-1997, Bruce J Kelley.",IDC_STATIC,34,72,
+                    117,8
+    DEFPUSHBUTTON   "OK",IDOK,76,55,32,14,WS_GROUP
+    ICON            RPN_ICON,IDC_STATIC,60,35,20,20
+    LTEXT           "64bit, DanLo, November 1999",IDC_STATIC,44,25,96,8
+END
+
+RPNF_DIALOG DIALOG DISCARDABLE  32768, 0, 144, 137
+STYLE WS_MINIMIZEBOX | WS_CAPTION | WS_SYSMENU
+CAPTION "RPN Calculator"
+MENU RPNF_MENU
+CLASS "RpnF"
+FONT 10, "System"
+BEGIN
+    CONTROL         "",IDD_DISPLAY_FLOAT,"FDisplay",0x0,0,0,144,40
+    PUSHBUTTON      ".",DECIMAL_KEY,2,58,20,14
+    PUSHBUTTON      "7",55,2,74,20,14
+    PUSHBUTTON      "4",52,2,90,20,14
+    PUSHBUTTON      "1",49,2,106,20,14
+    PUSHBUTTON      "0",48,2,122,20,14
+    PUSHBUTTON      "EEx",EEX_KEY,26,58,20,14
+    PUSHBUTTON      "8",56,26,74,20,14
+    PUSHBUTTON      "5",53,26,90,20,14
+    PUSHBUTTON      "2",50,26,106,20,14
+    PUSHBUTTON      "Enter",ENTER,26,122,44,14
+    PUSHBUTTON      "pi",PI_KEY,50,58,20,14
+    PUSHBUTTON      "9",57,50,74,20,14
+    PUSHBUTTON      "6",54,50,90,20,14
+    PUSHBUTTON      "3",51,50,106,20,14
+    PUSHBUTTON      "y^x",YTOX_KEY,74,42,20,14
+    PUSHBUTTON      "chs",NEGATE_KEY,74,58,20,14
+    PUSHBUTTON      "R-dn",ROLL_DOWN,74,74,20,14
+    PUSHBUTTON      "x<>y",SWAP_KEY,74,90,20,14
+    PUSHBUTTON      "clx",DELETE_KEY,74,106,20,14
+    PUSHBUTTON      "<--",BACKSPACE,74,122,20,14
+    PUSHBUTTON      "sin",SIN_KEY,98,42,20,14
+    PUSHBUTTON      "cos",COS_KEY,98,58,20,14
+    PUSHBUTTON      "tan",TAN_KEY,98,74,20,14
+    PUSHBUTTON      "ln",LN_KEY,98,90,20,14
+    PUSHBUTTON      "log",LOG_KEY,98,106,20,14
+    PUSHBUTTON      "inv",INVERSE_KEY,98,122,20,14
+    PUSHBUTTON      "+",PLUS_KEY,122,42,20,14
+    PUSHBUTTON      "--",MINUS_KEY,122,58,20,14
+    PUSHBUTTON      "*",MULT_KEY,122,74,20,14
+    PUSHBUTTON      "/",DIV_KEY,122,90,20,14
+    PUSHBUTTON      "1/x",ONE_OVER_KEY,122,106,20,14
+    PUSHBUTTON      "sqrt",SQRT_KEY,122,122,20,14
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+RPN_MENU MENU DISCARDABLE 
+BEGIN
+    POPUP "&Edit"
+    BEGIN
+        POPUP "&Copy"
+        BEGIN
+            MENUITEM "Copy from &X",                IDM_COPY_X
+            MENUITEM "Copy from &Y",                IDM_COPY_Y
+            MENUITEM "Copy from &Z",                IDM_COPY_Z
+            MENUITEM "Copy from &T",                IDM_COPY_T
+        END
+        POPUP "&Paste"
+        BEGIN
+            MENUITEM "Paste to &X",                 IDM_PASTE_X
+            MENUITEM "Paste to &Y",                 IDM_PASTE_Y
+            MENUITEM "Paste to &Z",                 IDM_PASTE_Z
+            MENUITEM "Paste to &T",                 IDM_PASTE_T
+        END
+    END
+    POPUP "&Base"
+    BEGIN
+        MENUITEM "&Binary",                     IDM_BINARY
+        MENUITEM "&Octal",                      IDM_OCTAL
+        MENUITEM "&Decimal",                    IDM_DECIMAL
+        MENUITEM "&Hexadecimal",                IDM_HEXADECIMAL
+        MENUITEM SEPARATOR
+        MENUITEM "&Floating Point",             IDM_FLOAT
+    END
+    POPUP "&Word Size"
+    BEGIN
+        MENUITEM "&8 bits",                     IDM_WORD_SIZE_8
+        MENUITEM "&16 bits",                    IDM_WORD_SIZE_16
+        MENUITEM "&32 bits",                    IDM_WORD_SIZE_32
+        MENUITEM "&64 bits",                    IDM_WORD_SIZE_64
+    END
+    POPUP "&Integer"
+    BEGIN
+        MENUITEM "&Unsigned",                   IDM_INTEGER_TYPE_UNSIGNED
+        MENUITEM "Signed, &1's Complement",     IDM_INTEGER_TYPE_1S, GRAYED
+        MENUITEM "Signed, &2's Complenent",     IDM_INTEGER_TYPE_2S
+    END
+    POPUP "\a&Help"
+    BEGIN
+        MENUITEM "&Help Keys Mode",             IDM_HELP_HELP_KEYS
+        MENUITEM "&About...",                   IDM_HELP_ABOUT
+    END
+END
+
+RPNF_MENU MENU DISCARDABLE 
+BEGIN
+    POPUP "&Edit"
+    BEGIN
+        POPUP "&Copy"
+        BEGIN
+            MENUITEM "Copy from &X",                IDM_COPY_X
+            MENUITEM "Copy from &Y",                IDM_COPY_Y
+            MENUITEM "Copy from &Z",                IDM_COPY_Z
+            MENUITEM "Copy from &T",                IDM_COPY_T
+        END
+        POPUP "&Paste"
+        BEGIN
+            MENUITEM "Paste to &X",                 IDM_PASTE_X
+            MENUITEM "Paste to &Y",                 IDM_PASTE_Y
+            MENUITEM "Paste to &Z",                 IDM_PASTE_Z
+            MENUITEM "Paste to &T",                 IDM_PASTE_T
+        END
+    END
+    POPUP "&Base"
+    BEGIN
+        MENUITEM "&Binary",                     IDM_BINARY
+        MENUITEM "&Octal",                      IDM_OCTAL
+        MENUITEM "&Decimal",                    IDM_DECIMAL
+        MENUITEM "&Hexadecimal",                IDM_HEXADECIMAL
+    END
+    POPUP "&Trig"
+    BEGIN
+        MENUITEM "&Degree",                     IDM_TRIG_DEGREE
+        MENUITEM "&Radian",                     IDM_TRIG_RADIAN
+        MENUITEM "&Grad",                       IDM_TRIG_GRAD
+    END
+    POPUP "\a&Help"
+    BEGIN
+        MENUITEM "&Help Keys Mode",             IDM_HELP_HELP_KEYS
+        MENUITEM "&About...",                   IDM_HELP_ABOUT
+    END
+END
+
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "#define APSTUDIO_HIDDEN_SYMBOLS\r\n"
+    "#include ""windows.h""\r\n"
+    "#undef APSTUDIO_HIDDEN_SYMBOLS\r\n"
+    "#include ""rpn.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO DISCARDABLE 
+BEGIN
+    RPN_DIALOG, DIALOG
+    BEGIN
+        BOTTOMMARGIN, 133
+    END
+
+    RPNF_DIALOG, DIALOG
+    BEGIN
+        BOTTOMMARGIN, 125
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_DIGIT               "Digit\n\rOnly those digit keys valid in the\n\rcurrent base are enabled.\n\rThese buttons are assigned to their\n\rrespective keyboard keys."
+    IDS_BACKSPACE_KEY       "Backup one digit.\n\rAssigned to the 'Backspace' key."
+    IDS_SWAP_KEY            "Swap bottom two levels of stack.\n\rAssigned to the 'Tab' key."
+    IDS_ENTER_KEY           "Enter current value to bottom of stack and push stack up one.\n\rAssigned to 'Enter' key."
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_MOD_KEY             "Modulus operator: X = (Y % X).\n\rAssigned to the '%' key."
+    IDS_AND_KEY             "Logical AND operator: X = (Y AND X).\n\rAssigned to the '&' key."
+    IDS_MULT_KEY            "Multiplication operator: X = (Y * X).\n\rAssigned to the '*' key."
+    IDS_PLUS_KEY            "Addition operator: X = (Y + X).\n\rAssigned to the '+' key.\n\rUnary Addition assigned to the ']' key."
+    IDS_UNARY_LEFT_SHIFT    "Left Shift by 1: X = (X << 1)\n\rAssigned to the ',' key"
+    IDS_MINUS_KEY           "Subtraction operator: X = (Y -- X).\n\rAssigned to the '--' key.\n\rUnary Subtraction assigned to the '[' key."
+    IDS_UNARY_RIGHT_SHIFT   "Right Shift by 1: X = (X >> 1)\n\rAssigned to the '.' key"
+    IDS_DIV_KEY             "Division operator: X = (Y / X).\n\rAssigned to the '/' key."
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_DECIMAL_KEY         "Decimal point\n\rAssigned to the '.' key"
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_OR_KEY              "Logical OR opeartor: X = (X OR Y).\n\rAssigned to the '|' key."
+    IDS_NOT_KEY             "Logical NOT operator: X = (NOT X).\n\rAssigned to the '~' key."
+    IDS_DELETE_KEY          "Clear X: Drop the bottom level of the stack.\n\rAssigned to the 'Delete' key."
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_PI_KEY              "Pi\n\rConstant value of Pi\n\rAssigned to the 'P' key"
+    IDS_SQRT_KEY            "Sqare root operator\n\rX = Sqrt(X)\n\rAssigned to the 'Q' key\n\rInverse:X = X squared"
+    IDS_ROLL_DOWN_KEY       "Roll Down: Roll the stack down one level.\n\rAssigned to the 'R' key."
+    IDS_NEGATE_KEY          "Change Sign operator: X = (--X).\n\rAssigned to the 'S' key."
+    IDS_TAN_KEY             "Tangent operator\n\rX = tan(X)\n\rAssigned to the 'T' key\n\rInverse:X = atan(X)"
+    IDS_UNARY_MINUS         "Unary Subtraction Operator: X = (X -- 1)\n\rAssigned to the '[' key"
+    IDS_UNARY_PLUS          "Unary Addition Operator: X = (X + 1)\n\rAssigned to the ']' key"
+    IDS_XOR_KEY             "Logical XOR operator: X = (Y XOR X).\n\rAssigned to the '^' key."
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_LEFT_SHIFT_KEY      "Left Shift operator: X = (Y << X).\n\rShift operators ignore all but last 6 bits of X.\n\rAssigned to the '<' key.\n\rLeft Shift by 1 assigned to the ',' key."
+    IDS_RIGHT_SHIFT_KEY     "Right Shift operator: X = (Y >> X).\n\rShift operators ignore all but last 6 bits of X.\n\rAssigned to the '>' key.\n\rRight Shift by 1 assigned to the '.' key."
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_COS_KEY             "Cosine operator\n\rX = cos(X)\n\rAssigned to the 'C' key\n\rInverse:X = acos(X)"
+    IDS_EEX_KEY             "Enter an exponent\n\rAssigned to the 'E' key"
+    IDS_LOG_KEY             "Base 10 logarithm operator\n\rX = log(X)\n\rAssigned to the 'G' key\n\rInverse:X = 10 to the X'th power"
+    IDS_SIN_KEY             "Sine operator\n\rX = sin(X)\n\rAssigned to the 'I' key\n\rInverse:X = asin(X)"
+    IDS_KILO_KEY            "Kilo operator, X = (X * 1024).\n\rAssigned to the 'K' key."
+    IDS_TOGGLE_BASE_KEY     "Last Base: Toggle between the last two used bases.\n\rAssigned to the 'L' key."
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_BINARY              "Binary\n\rUse Base 2 for display\n\rand digit entry."
+    IDS_OCTAL               "Octal\n\rUse Base 8 for display\n\rand digit entry."
+    IDS_DECIMAL             "Decimal\n\rUse Base 10 for display\n\rand digit entry."
+    IDS_HEXADECIMAL         "Hexadecimal\n\rUse base 16 for display\n\rand digit entry."
+    IDS_FLOAT               "Toggle calculator to floating point mode"
+    IDS_WORD_SIZE_8         "Use 8-bit words."
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_WORD_SIZE_16        "Use 16-bit words."
+    IDS_WORD_SIZE_32        "Use 32-bit words."
+    IDS_WORD_SIZE_64        "Use 64-bit words."
+    IDS_INTEGER_TYPE_UNSIGNED "Use Unsigned integer representation."
+    IDS_INTEGER_TYPE_1S     "Use One's Complement integer representation.\n\r(Not yet implemented.)"
+    IDS_INTEGER_TYPE_2S     "Use Two's Complement integer representation."
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_ONE_OVER_KEY        "1/x operator\n\rX = 1/X\n\rAssigned to the '%' key"
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_INVERSE_KEY         "Inverse toggle\n\rInverse of the next operation\n\rie, Inverse sin = asin\n\rAssigned to the ESC key"
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_YTOX_KEY            "Power operator\n\rX = Y to the X'th power\n\rAssigned to the '^' key\n\rInverse:X = X'th root of Y"
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_LN_KEY              "Natural logarithm operator\n\rX = ln(X)\n\rAssigned to the 'N' key\n\rInverse:X = e raised to the X'th power"
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_TRIG_DEGREE         "Use degrees for trigonometry calculations"
+    IDS_TRIG_RADIAN         "Use radians for trigonometry calculations"
+    IDS_TRIG_GRAD           "Use grads for trigonometry calculations"
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_COPY_X              "Copy the contents of X to the clipboard"
+    IDS_COPY_Y              "Copy the contents of Y to the clipboard"
+    IDS_COPY_Z              "Copy the contents of Z to the clipboard"
+    IDS_COPY_T              "Copy the contents of T to the clipboard"
+    IDS_PASTE_X             "Paste the clipboard contents to X"
+    IDS_PASTE_Y             "Paste the clipboard contents to Y"
+END
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_PASTE_Z             "Paste the clipboard contents to Z"
+    IDS_PASTE_T             "Paste the clipboard contents to T"
+END
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

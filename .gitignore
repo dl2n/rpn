@@ -1,0 +1,29 @@
+# Visual Studio workspace and per-user settings
+.vs/
+*.user
+*.suo
+*.ncb
+*.opt
+*.aps
+*.plg
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+
+# Build output and intermediate files
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+ipch/
+*.obj
+*.res
+*.pdb
+*.idb
+*.ilk
+*.pch
+*.tlog
+*.lastbuildstate
+*.exe
+*.dll
