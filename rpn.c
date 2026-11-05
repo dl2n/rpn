@@ -34,10 +34,10 @@
 #include "rpn.h"
 
 
-LONG APIENTRY WndProc(HWND hwnd, UINT message, WPARAM wParam, LONG lParam);
-LONG APIENTRY DisplayControlProc(HWND hwnd, UINT message, WPARAM wParam,
-								 LONG lParam);
-BOOL APIENTRY About(HWND, UINT, WPARAM, LONG);
+LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK DisplayControlProc(HWND hwnd, UINT message, WPARAM wParam,
+								 LPARAM lParam);
+INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
 void CalcIt(PSTACK pStack, DWORD dwOperation, HWND hwnd);
 BOOL HelpKeys( DWORD dwOperation, HANDLE hInst, HWND hwnd ,
                UCHAR* szStringBuffer, DWORD cbStringBuffer );
@@ -53,10 +53,10 @@ BOOL StrNumTest(PUCHAR lpNumStr, USHORT Radix, USHORT usIntegerType,
 BOOL ClipboardPaste(PNUMBER pdwNumber, USHORT Radix, USHORT usIntegerType);
 BOOL ClipboardCopy(NUMBER dwNumber, USHORT Radix, USHORT usIntegerType);
 
-extern LONG APIENTRY FWndProc(HWND hwnd, UINT message, WPARAM wParam,
-							  LONG lParam);
-extern LONG APIENTRY FDisplayControlProc(HWND hwnd, UINT message, WPARAM wParam,
-										 LONG lParam);
+extern LRESULT CALLBACK FWndProc(HWND hwnd, UINT message, WPARAM wParam,
+							  LPARAM lParam);
+extern LRESULT CALLBACK FDisplayControlProc(HWND hwnd, UINT message, WPARAM wParam,
+										 LPARAM lParam);
 
 
 USHORT Radix = 16;								// hexadecimal
@@ -201,11 +201,11 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 	
 	SaveRPNState();
 	
-	return(msg.wParam);
+	return((int)msg.wParam);
 }
 
 
-void WmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LONG lParam) 
+void WmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 {
     
 	USHORT Digit;
@@ -214,7 +214,7 @@ void WmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LONG lParam)
     {
         UCHAR szStringBuffer[ MAX_STRING_SIZE ];
 
-        if ( HelpKeys( wParam, hInst, hwnd,
+        if ( HelpKeys( (DWORD)wParam, hInst, hwnd,
                        szStringBuffer, MAX_STRING_SIZE ) )
         {
             MessageBox(hwnd, szStringBuffer, "RPN Help Keys Mode",
@@ -260,7 +260,7 @@ void WmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LONG lParam)
         }
         
         else {  // operation pressed.
-            CalcIt(&Stack, wParam, hwnd);
+            CalcIt(&Stack, (DWORD)wParam, hwnd);
         }
     }
 }
@@ -328,7 +328,7 @@ BOOL CALLBACK EnumChildWindowsProc( HWND hwnd, LPARAM lParam )
 
 #endif
 
-LONG APIENTRY WndProc(HWND hwnd, UINT message, WPARAM wParam, LONG lParam) 
+LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 {
     HWND hButton;
     
@@ -363,7 +363,7 @@ LONG APIENTRY WndProc(HWND hwnd, UINT message, WPARAM wParam, LONG lParam)
         //			  DebugPrintf("WM_CHAR message: %u\n", wParam);
         wParam = toupper((char)wParam);
         
-        if (hButton = GetDlgItem(hwnd, wParam)) {
+        if (hButton = GetDlgItem(hwnd, (int)wParam)) {
             SendMessage(hButton, BM_SETSTATE, 1, 0L);
             SendMessage(hButton, BM_SETSTATE, 0, 0L);
         }
@@ -465,8 +465,8 @@ LONG APIENTRY WndProc(HWND hwnd, UINT message, WPARAM wParam, LONG lParam)
 
 
 
-LONG APIENTRY DisplayControlProc(HWND hwnd, UINT message, WPARAM wParam,
-								 LONG lParam) {
+LRESULT CALLBACK DisplayControlProc(HWND hwnd, UINT message, WPARAM wParam,
+								 LPARAM lParam) {
 	
 	HDC hdc;
 	TEXTMETRIC TextMetric;
@@ -526,7 +526,7 @@ void RedrawDisplay(HWND hwnd) {
 }
 
 
-void CALLBACK ClearErrorTimer(HWND hwnd, UINT message, UINT id, DWORD time) {
+void CALLBACK ClearErrorTimer(HWND hwnd, UINT message, UINT_PTR id, DWORD time) {
 
 	ErrorFlag = FALSE;
 	RedrawDisplay(hwnd);
@@ -577,12 +577,12 @@ void PaintStackDisplay(HWND hwnd, HDC hdc, PSTACK pStack, USHORT Radix) {
 		break;
 	}
 
-	sprintf(psString, "%c   %s  %-2u     %s",
+	sprintf_s(psString, sizeof(psString), "%c   %s  %-2u     %s",
 			(ErrorFlag? '!':' '),
 			psBase,
 			WordSize,
 			psIntegerType);
-	TextOut(hdc, 1, 1, psString, strlen(psString));
+	TextOut(hdc, 1, 1, psString, (int)strlen(psString));
 
 	//
 	//  Queue timer to clear the error flag.
@@ -595,16 +595,16 @@ void PaintStackDisplay(HWND hwnd, HDC hdc, PSTACK pStack, USHORT Radix) {
 	SetTextColor(hdc, RGB(255, 0, 0));				 // Red text color
 	
 	IntToA(pStack->T, psString, sizeof(psString), Radix, usIntegerType, TRUE);
-	TextOut(hdc, 1, 1 + (int)cyChar, psString, strlen(psString));
+	TextOut(hdc, 1, 1 + (int)cyChar, psString, (int)strlen(psString));
 	
 	IntToA(pStack->Z, psString, sizeof(psString), Radix, usIntegerType, TRUE);
-	TextOut(hdc, 1, 1 + 2 * (int)cyChar, psString, strlen(psString));
+	TextOut(hdc, 1, 1 + 2 * (int)cyChar, psString, (int)strlen(psString));
 	
 	IntToA(pStack->Y, psString, sizeof(psString), Radix, usIntegerType, TRUE);
-	TextOut(hdc, 1, 1 + 3 * (int)cyChar, psString, strlen(psString));
+	TextOut(hdc, 1, 1 + 3 * (int)cyChar, psString, (int)strlen(psString));
 	
 	IntToA(pStack->X, psString, sizeof(psString), Radix, usIntegerType, TRUE);
-	TextOut(hdc, 1, 1 + 4 * (int)cyChar, psString, strlen(psString));
+	TextOut(hdc, 1, 1 + 4 * (int)cyChar, psString, (int)strlen(psString));
 }
 
 
@@ -613,7 +613,8 @@ char * IntToA(NUMBER Value, char * psString, ULONG Length, USHORT Radix, USHORT 
 	
 	switch (IntegerType) {
 	case INTEGER_TYPE_UNSIGNED:
-		_ui64toa(Value, psString, Radix);
+		if (_ui64toa_s(Value, psString, Length, Radix) != 0)
+			return(NULL);
 		break;
 		
 	case INTEGER_TYPE_1S_COMP:
@@ -642,7 +643,8 @@ char * IntToA(NUMBER Value, char * psString, ULONG Length, USHORT Radix, USHORT 
 				break;
 			}
 		}
-		_i64toa(Value, psString, Radix);
+		if (_i64toa_s((SIGNED_NUMBER)Value, psString, Length, Radix) != 0)
+			return(NULL);
 		break;
 		
 	default:
@@ -653,7 +655,7 @@ char * IntToA(NUMBER Value, char * psString, ULONG Length, USHORT Radix, USHORT 
 	if (Adorn) {
 
 		ULONG SplitUnit;
-		ULONG Remain, Slop;
+		size_t Remain, Slop;
 		PUCHAR SplitPoint = psString;
 		UCHAR SplitChar = ' ';
 
@@ -757,7 +759,7 @@ void DebugPrintf(const char * format, ...) {
 	char String[512];
 	
 	va_start(marker, format);
-	vsprintf(String, format, marker);
+	vsprintf_s(String, sizeof(String), format, marker);
 	OutputDebugString(String);
 	va_end(marker);
 #else
@@ -779,7 +781,7 @@ void ErrorBox(const char * format, ...) {
 	char String[512];
 	
 	va_start(marker, format);
-	vsprintf(String, format, marker);
+	vsprintf_s(String, sizeof(String), format, marker);
 	OutputDebugString(String);
 	OutputDebugString("\n");					// ErrorBox strings don't have
 	// newline.
@@ -1392,8 +1394,6 @@ void BackSpaceOp(PSTACK pStack)
 
 void CalcIt(PSTACK pStack, DWORD dwOperation, HWND hwnd)
 {
-	FARPROC 	lpProcAbout;
-	
 	//	  DebugPrintf("CalcIt(%u)\n", dwOperation);
 	
 	switch(dwOperation) {
@@ -1475,10 +1475,8 @@ void CalcIt(PSTACK pStack, DWORD dwOperation, HWND hwnd)
 		break;
 		
 	case IDM_HELP_ABOUT:
-		lpProcAbout = MakeProcInstance((FARPROC)About, hInst);
 		DialogBox(GetModuleHandle(NULL), "AboutBox", hwnd,
-			(WNDPROC)lpProcAbout);
-		FreeProcInstance(lpProcAbout);
+			About);
 		break;
 		
 	case IDM_HELP_HELP_KEYS:
@@ -1554,7 +1552,6 @@ BOOL HelpKeys( DWORD dwOperation, HANDLE hInst, HWND hwnd ,
     BOOL fRet = FALSE;
 
 	DWORD StringSize;
-	FARPROC lpProcAbout;
 	
 	DebugPrintf("HelpKeys(%u)\n", dwOperation);
 	
@@ -1591,18 +1588,17 @@ BOOL HelpKeys( DWORD dwOperation, HANDLE hInst, HWND hwnd ,
 		break;
 		
 	case IDM_HELP_ABOUT:
-		lpProcAbout = MakeProcInstance((FARPROC)About, hInst);
 		DialogBox(GetModuleHandle(NULL), "AboutBox", hwnd,
-			(WNDPROC)lpProcAbout);
-		FreeProcInstance(lpProcAbout);
+			About);
 		break;
 
 	default:
 		if ((StringSize = LoadString(hInst, dwOperation | IDS_HELP_PREFIX,
 			szStringBuffer, MAX_STRING_SIZE)) == 0) 
         {
-			strcpy(szStringBuffer, "No help available for this key");
-			StringSize = strlen(szStringBuffer);
+			strcpy_s(szStringBuffer, cbStringBuffer,
+				"No help available for this key");
+			StringSize = (DWORD)strlen(szStringBuffer);
 		}
         else
         {
@@ -1629,7 +1625,7 @@ BOOL HelpKeys( DWORD dwOperation, HANDLE hInst, HWND hwnd ,
 *	  WM_INITDIALOG - initialize dialog box
 *	  WM_COMMAND	- Input received
 */
-BOOL  APIENTRY About(HWND hDlg, UINT message, WPARAM wParam, LONG lParam)
+INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	switch (message) {
 	case WM_INITDIALOG:
@@ -1698,7 +1694,7 @@ BOOL NumTest(NUMBER X, USHORT Radix, USHORT Digit, USHORT usIntegerType) {
 BOOL StrNumTest(PUCHAR lpNumStr, USHORT Radix, USHORT usIntegerType,
 				PNUMBER pNumber) {
 	NUMBER Number = 0;
-	DWORD dwStrLength = strlen(lpNumStr);
+	size_t dwStrLength = strlen(lpNumStr);
 	USHORT Digit;
 	BOOL fReturn = TRUE;
 	DWORD i;
@@ -1718,9 +1714,10 @@ BOOL StrNumTest(PUCHAR lpNumStr, USHORT Radix, USHORT usIntegerType,
 		
 		Digit = (USHORT)(toupper((UCHAR)lpNumStr[i]) -
 			(isdigit(lpNumStr[i]) ? '0' : 'A' - 10));
-		
+
 		DebugPrintf("Char: %c, Digit: 0x%x\n", lpNumStr[i], Digit);
-		if (NumTest(Number, Radix, Digit, usIntegerType)) {
+		if ((Digit < Radix) &&
+			NumTest(Number, Radix, Digit, usIntegerType)) {
 		/*
 		* Signed decimal numbers need special treatment if
 		* they are negative.
@@ -1888,7 +1885,7 @@ BOOL ClipboardCopy(NUMBER Number, USHORT Radix, USHORT usIntegerType) {
 	HGLOBAL hClipboardMem;
 	PUCHAR	pchClipboard;
 	UCHAR	StrNum[DISPLAY_WIDTH + 1];
-	DWORD	dwLength;
+	size_t	dwLength;
 	
 	
 	IntToA(Number, StrNum, sizeof(StrNum), Radix, usIntegerType, FALSE);
@@ -1910,7 +1907,7 @@ BOOL ClipboardCopy(NUMBER Number, USHORT Radix, USHORT usIntegerType) {
 		return(FALSE);
 	}
 	
-	strcpy(pchClipboard, StrNum);
+	memcpy(pchClipboard, StrNum, dwLength + 1);
 	
 	GlobalUnlock(hClipboardMem);
 	OpenClipboard(hwndDialog);		  // HWND?

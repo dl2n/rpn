@@ -212,7 +212,7 @@ RPN.H header file
 #ifndef MAXLONGLONG
 #define MAXLONGLONG     0x7fffffffffffffff
 #endif
-#ifndef MINULONGLONG
+#ifndef MINLONGLONG
 #define MINLONGLONG     0x8000000000000000
 #endif
 
@@ -385,9 +385,9 @@ extern BOOL ErrorFlag;
 void SaveRPNState(void);
 void RestoreRPNState(void);
 void RedrawDisplay(HWND hwnd);
-void CALLBACK ClearErrorTimer(HWND hwnd, UINT message, UINT id, DWORD time);
+void CALLBACK ClearErrorTimer(HWND hwnd, UINT message, UINT_PTR id, DWORD time);
 
-void FWmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LONG lParam);
+void FWmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 void FWmNotifyProc( HWND hwnd, int idCtrl, LPNMHDR pnmh );
 void FPaintStackDisplay(HWND hwnd, HDC hdc, PFSTACK pFStack, UCHAR * pEntryString);
 
@@ -397,5 +397,3 @@ void FPaintStackDisplay(HWND hwnd, HDC hdc, PFSTACK pFStack, UCHAR * pEntryStrin
 //
 
 void ChangeBase(USHORT Base);
-
-

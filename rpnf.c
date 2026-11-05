@@ -30,7 +30,7 @@
 // no _fpclass function in the libraries
 #define FLOAT_BUG	TRUE
 
-extern BOOL  APIENTRY About(HWND, UINT, WPARAM, LONG);
+extern INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
 void FCalcIt(PFSTACK pStack, DWORD dwOperation, HWND hwnd);
 BOOL FHelpKeys( DWORD dwOperation, HANDLE hInst, HWND hwnd ,
                 UCHAR* szStringBuffer, DWORD cbStringBuffer );
@@ -73,13 +73,13 @@ extern DWORD MenuY;
 extern DWORD CaptionY;
 
 
-void FWmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LONG lParam) 
+void FWmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 {
 	if ( fHelpKeysMode ) 
     {
         UCHAR szStringBuffer[ MAX_STRING_SIZE ];
 
-		if ( FHelpKeys( wParam, hInst, hwnd, 
+		if ( 		FHelpKeys( (DWORD)wParam, hInst, hwnd, 
                         szStringBuffer, MAX_STRING_SIZE ) )
         {
     		MessageBox(hwnd, szStringBuffer, "RPN Help Keys Mode",
@@ -101,7 +101,7 @@ void FWmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LONG lParam)
 				// Move the contents of the stack up one level so that
 				// there is room in X for a new number.
 				FEnterOp(&FStack, pEntryString);
-				strcpy(pEntryString, "");
+				pEntryString[0] = '\0';
 				fEnter = TRUE;
 			}
 			
@@ -116,7 +116,7 @@ void FWmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LONG lParam)
 		}
 		
 		else {	// operation pressed.
-			FCalcIt(&FStack, wParam, hwnd);
+			FCalcIt(&FStack, (DWORD)wParam, hwnd);
 		}
 	}
 }
@@ -183,11 +183,11 @@ void FPaintStackDisplay(HWND hwnd, HDC hdc, PFSTACK pFStack,
 		break;
 	}
 
-	sprintf(psString, "%c         %6s      %s",
+	sprintf_s(psString, sizeof(psString), "%c         %6s      %s",
 			(ErrorFlag? '!':' '),
 		    psFloatAngleType,
 			fInverse ? "Inverse" : "");
-	TextOut(hdc, 1, 1, psString, strlen(psString));
+	TextOut(hdc, 1, 1, psString, (int)strlen(psString));
 
     //
 	//  Queue timer to clear the error flag.
@@ -201,19 +201,19 @@ void FPaintStackDisplay(HWND hwnd, HDC hdc, PFSTACK pFStack,
 	SetTextColor(hdc, RGB(255, 0, 0));				 // Red text color
 	
 	FToA(pFStack->T, psString, sizeof(psString), usSignificantDigits, usFloatDisplayMode, TRUE);
-	TextOut(hdc, 1, 1 + (int)cyChar, psString, strlen(psString));
+	TextOut(hdc, 1, 1 + (int)cyChar, psString, (int)strlen(psString));
 	
 	FToA(pFStack->Z, psString, sizeof(psString), usSignificantDigits, usFloatDisplayMode, TRUE);
-	TextOut(hdc, 1, 1 + 2 * (int)cyChar, psString, strlen(psString));
+	TextOut(hdc, 1, 1 + 2 * (int)cyChar, psString, (int)strlen(psString));
 	
 	FToA(pFStack->Y, psString, sizeof(psString), usSignificantDigits, usFloatDisplayMode, TRUE);
-	TextOut(hdc, 1, 1 + 3 * (int)cyChar, psString, strlen(psString));
+	TextOut(hdc, 1, 1 + 3 * (int)cyChar, psString, (int)strlen(psString));
 	
 	if (fEnter)
-		strcpy(psString, pEntryString);
+		strcpy_s(psString, sizeof(psString), pEntryString);
 	else
 		FToA(pFStack->X, psString, sizeof(psString), usSignificantDigits, usFloatDisplayMode, TRUE);
-	TextOut(hdc, 1, 1 + 4 * (int)cyChar, psString, strlen(psString));
+	TextOut(hdc, 1, 1 + 4 * (int)cyChar, psString, (int)strlen(psString));
 }
 
 
@@ -221,15 +221,17 @@ void FPaintStackDisplay(HWND hwnd, HDC hdc, PFSTACK pFStack,
 char * FToA(FNUMBER FX, char * psString, ULONG Length, USHORT SignificantDigits, USHORT usFloatDisplayMode, BOOLEAN Adorn) {
 	
 	PCHAR PeriodIndex;
-	ULONG CurLen;
+	size_t CurLen;
 
 	switch(usFloatDisplayMode) {
 	case FLOAT_DISPLAY_AUTO:
-		_gcvt(FX, SignificantDigits, psString);
+		if (_gcvt_s(psString, Length, FX, SignificantDigits) != 0)
+			return(NULL);
 		break;
 		
 	case FLOAT_DISPLAY_FIX:
-		_gcvt(FX, SignificantDigits, psString);
+		if (_gcvt_s(psString, Length, FX, SignificantDigits) != 0)
+			return(NULL);
 		break;
 		
 	case FLOAT_DISPLAY_SCI:
@@ -256,8 +258,8 @@ char * FToA(FNUMBER FX, char * psString, ULONG Length, USHORT SignificantDigits,
 
 	if (Adorn) {
 
-		ULONG SplitUnit = 3;
-		ULONG Remain, Slop;
+		size_t SplitUnit = 3;
+		size_t Remain, Slop;
 		PUCHAR SplitPoint = psString;
 		UCHAR SplitChar = ',';
 
@@ -403,7 +405,7 @@ void FSwapOp(PFSTACK pFStack)
 void FNegOp(PFSTACK pFStack, PUCHAR pEntryString, BOOL fEnter)
 {
 	PUCHAR pTemp;
-	DWORD Length;
+	size_t Length;
 	
 	
 	if (fEnter) {
@@ -450,7 +452,7 @@ void FNegOp(PFSTACK pFStack, PUCHAR pEntryString, BOOL fEnter)
 */
 void FEExOp(PUCHAR pEntryString, BOOL fEnter) {
 	PUCHAR pTemp;
-	DWORD Length;
+	size_t Length;
 	
 	if (fEnter) {  // nop if not in entry mode
 		if (pTemp = strchr(pEntryString, 'E')) {
@@ -975,7 +977,7 @@ void FDropOp(PFSTACK pFStack)
 
 void FBackSpaceOp(PUCHAR pEntryString, BOOL fEnter)
 {
-	DWORD Length;
+	size_t Length;
 	
 	if (fEnter && (Length = strlen(pEntryString))) {
 		pEntryString[Length - 1] = '\0';
@@ -1012,7 +1014,6 @@ void FClearStack(PFSTACK pFStack)
 
 void FCalcIt(PFSTACK pFStack, DWORD dwOperation, HWND hwnd)
 {
-	FARPROC 	lpProcAbout;
 	BOOLEAN		SwitchMode = FALSE;
 	
 	//	  DebugPrintf("CalcIt(%u)\n", dwOperation);
@@ -1183,10 +1184,8 @@ void FCalcIt(PFSTACK pFStack, DWORD dwOperation, HWND hwnd)
 		break;
 		
 	case IDM_HELP_ABOUT:
-		lpProcAbout = MakeProcInstance((FARPROC)About, hInst);
 		DialogBox(GetModuleHandle(NULL), "AboutBox", hwnd,
-			(WNDPROC)lpProcAbout);
-		FreeProcInstance(lpProcAbout);
+			About);
 		break;
 		
 	case IDM_HELP_HELP_KEYS:
@@ -1234,7 +1233,6 @@ BOOL FHelpKeys( DWORD dwOperation, HANDLE hInst, HWND hwnd ,
 {
     BOOL fRet = FALSE;
 	DWORD StringSize;
-	FARPROC lpProcAbout;
 	
 	DebugPrintf("HelpKeys(%u)\n", dwOperation);
 	
@@ -1263,18 +1261,17 @@ BOOL FHelpKeys( DWORD dwOperation, HANDLE hInst, HWND hwnd ,
 		break;
 		
 	case IDM_HELP_ABOUT:
-		lpProcAbout = MakeProcInstance((FARPROC)About, hInst);
 		DialogBox(GetModuleHandle(NULL), "AboutBox", hwnd,
-			(WNDPROC)lpProcAbout);
-		FreeProcInstance(lpProcAbout);
+			About);
 		break;
 		
 	default:
 		if ((StringSize = LoadString(hInst, dwOperation | IDS_HELP_PREFIX,
 			szStringBuffer, cbStringBuffer )) == 0) 
         {
-			strcpy(szStringBuffer, "No help available for this key");
-			StringSize = strlen(szStringBuffer);
+			strcpy_s(szStringBuffer, cbStringBuffer,
+				"No help available for this key");
+			StringSize = (DWORD)strlen(szStringBuffer);
 		}
         else
         {
@@ -1313,11 +1310,11 @@ BOOL FHelpKeys( DWORD dwOperation, HANDLE hInst, HWND hwnd ,
 */
 
 BOOL FNumTest(PUCHAR pEntryString, UCHAR Char) {
-	DWORD Length;
+	size_t Length;
 	PUCHAR pTemp;
 	DWORD DotCount = 0;
 	BOOL fValid = FALSE;
-	DWORD MantDigits = 0, ExpDigits = 0;
+	size_t MantDigits = 0, ExpDigits = 0;
 	PUCHAR pExp = NULL;
 	FNUMBER X;
 	
@@ -1475,7 +1472,7 @@ BOOL FClipboardCopy(FNUMBER fNumber, USHORT usSignificantDigits,
 	HGLOBAL hClipboardMem;
 	PUCHAR	pchClipboard;
 	UCHAR	StrNum[DISPLAY_WIDTH + 1];
-	DWORD	dwLength;
+	size_t	dwLength;
 	
 	
 	FToA(fNumber, StrNum, sizeof(StrNum), usSignificantDigits, usFloatDisplayMode, FALSE);
@@ -1495,7 +1492,7 @@ BOOL FClipboardCopy(FNUMBER fNumber, USHORT usSignificantDigits,
 		return(FALSE);
 	}
 	
-	strcpy(pchClipboard, StrNum);
+	memcpy(pchClipboard, StrNum, dwLength + 1);
 	
 	GlobalUnlock(hClipboardMem);
 	OpenClipboard(hwndDialog);
@@ -1587,12 +1584,12 @@ BOOL FStrNumTest(PUCHAR lpNumStr, FNUMBER * pfNumber) {
 	DWORD dwNumber = 0;
 	UCHAR fNumberStr[DISPLAY_WIDTH + 1];
 	PUCHAR pNumberStr = fNumberStr;
-	DWORD dwStrLength = strlen(lpNumStr);
+	size_t dwStrLength = strlen(lpNumStr);
 	BOOL fReturn = TRUE;
 	DWORD i;
 	
 	
-	strcpy(fNumberStr, "");
+	fNumberStr[0] = '\0';
 	for (i = 0; i < dwStrLength; i++) {
 		if ((lpNumStr[i] == '-') || (lpNumStr[i] == '+') ||
 			(toupper(lpNumStr[i])) == 'E') {
@@ -1636,7 +1633,7 @@ BOOL FStrNumTest(PUCHAR lpNumStr, FNUMBER * pfNumber) {
 BOOL StrClipboardCopy(PUCHAR pString) {
 	HGLOBAL hClipboardMem;
 	PUCHAR	pchClipboard;
-	DWORD	dwLength;
+	size_t	dwLength;
 	
 	
 	hClipboardMem = GlobalAlloc(GHND | GMEM_DDESHARE,
@@ -1654,7 +1651,7 @@ BOOL StrClipboardCopy(PUCHAR pString) {
 		return(FALSE);
 	}
 	
-	strcpy(pchClipboard, pString);
+	memcpy(pchClipboard, pString, dwLength + 1);
 	
 	GlobalUnlock(hClipboardMem);
 	OpenClipboard(hwndDialog);
@@ -1712,7 +1709,8 @@ BOOL StrClipboardPaste(PUCHAR pString) {
 		
 		if (FStrNumTest(pClipboardMem, &fNumber)) {
 			// valid number in dwNumber
-			strncpy(pString, pClipboardMem, DISPLAY_WIDTH);
+			memcpy(pString, pClipboardMem, DISPLAY_WIDTH);
+			pString[DISPLAY_WIDTH] = '\0';
 		}
 		else {	// warn user that the clipboard doesn't contain a valid number
 				ErrorBox("The clipboard does not contain a\n\
