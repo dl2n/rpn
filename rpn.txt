@@ -26,6 +26,11 @@ right shift is now arithmetic when signed integers are in use, use of HP-like
 
 New in version 1.13: tooltips, fixed decimal radix mode restore
 
+New since version 1.13: x64 build for Visual Studio 2026, and a collapsible
+keypad.  Press the Up arrow to roll the keypad up so only the stack/status
+display shows, and the Down arrow to unroll it (also View > Keypad).  The
+setting is remembered across restarts.
+
 Future ideas:
 
 * figure out how to get the error/help popups to center on the window (probably
@@ -38,9 +43,6 @@ Future ideas:
   binary display on 64bit word sizes without an acre of screen space (this
   may involve rewriting the displayengine entirely in something less primitive
   than original Win32 (like MFC), a bit of a project for now)
-  
-* rip off, or at least allow toggling of, the buttons below the display box
-  (who needs them once you know the keybindings?)
   
 * cast the float/binary stacks between each other on mode switch (but the
   current behavior is somewhat useful, this may not be worth worrying about)

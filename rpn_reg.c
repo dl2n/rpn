@@ -81,6 +81,7 @@ void SaveRPNState(void) {
 		RegSaveShort(hKey, "CalcMode", usCalcMode);
 		RegSaveLong(hKey, "WindowX", dwWindowX);
 		RegSaveLong(hKey, "WindowY", dwWindowY);
+		RegSaveLong(hKey, "KeypadHidden", fKeypadHidden ? 1 : 0);
 		RegSaveBinary(hKey, "Float Stack", (LPBYTE)&FStack, sizeof(FStack));
 		// UCHAR pEntryString[DISPLAY_WIDTH + 1] = "";
 		RegSaveShort(hKey, "SignificantDigits", usSignificantDigits);
@@ -105,6 +106,11 @@ void RestoreRPNState(void) {
 		RegGetShort(hKey, "CalcMode", &usCalcMode);
 		RegGetLong(hKey, "WindowX", &dwWindowX);
 		RegGetLong(hKey, "WindowY", &dwWindowY);
+		{
+			ULONG ulKeypadHidden = 0;
+			RegGetLong(hKey, "KeypadHidden", &ulKeypadHidden);
+			fKeypadHidden = (ulKeypadHidden != 0);
+		}
 		RegGetBinary(hKey, "Float Stack", (LPBYTE)&FStack, sizeof(FStack));
 		// UCHAR pEntryString[DISPLAY_WIDTH + 1] = "";
 		RegGetShort(hKey, "SignificantDigits", &usSignificantDigits);

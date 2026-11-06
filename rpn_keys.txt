@@ -24,6 +24,8 @@ Keys:
   /         Division operator (X <- Y / X)
   %         Modulus operator (X <- Y % X)
   L         Last Base shorthand.  Toggles between the last two bases used.
+  <UP>      Hide (roll up) the keypad, leaving only the display.
+  <DOWN>    Show (unroll) the keypad.
 
 Base menu:
   2, 8, 10 and 16 are selectable.
@@ -33,6 +35,9 @@ Word Size menu:
 
 Integer menu:
   Two's Complement Signed integers and Unsigned integers are selectable.
+
+View menu:
+  Keypad toggles the keypad (same as the Up/Down arrow keys).
 
 The display:
   The top line (in green) is the status display, including current Base,

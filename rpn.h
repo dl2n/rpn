@@ -114,6 +114,8 @@ RPN.H header file
 #define IDM_PASTE_Z                 416
 #define IDM_PASTE_T                 417
 
+#define IDM_VIEW_KEYPAD             420
+
 
 #define IDD_DISPLAY  257
 #define IDD_STATUS   258
@@ -312,6 +314,7 @@ MINCHAR)
 #define IDS_PASTE_Y         (IDM_PASTE_Y | IDS_HELP_PREFIX)
 #define IDS_PASTE_Z         (IDM_PASTE_Z | IDS_HELP_PREFIX)
 #define IDS_PASTE_T         (IDM_PASTE_T | IDS_HELP_PREFIX)
+#define IDS_VIEW_KEYPAD     (IDM_VIEW_KEYPAD | IDS_HELP_PREFIX)
 
 
 
@@ -361,6 +364,7 @@ extern USHORT LastRadix;
 extern STACK Stack;
 extern BOOL fEnter;
 extern BOOL fHelpKeysMode;
+extern BOOL fKeypadHidden;
 extern HWND hDisplay;
 extern HWND hwndDialog;
 extern DWORD cyChar;
@@ -385,6 +389,7 @@ extern BOOL ErrorFlag;
 void SaveRPNState(void);
 void RestoreRPNState(void);
 void RedrawDisplay(HWND hwnd);
+void SetKeypadVisible(HWND hwnd, BOOL fShow);
 void CALLBACK ClearErrorTimer(HWND hwnd, UINT message, UINT_PTR id, DWORD time);
 
 void FWmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);

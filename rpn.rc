@@ -188,6 +188,10 @@ BEGIN
         MENUITEM "Signed, &1's Complement",     IDM_INTEGER_TYPE_1S, GRAYED
         MENUITEM "Signed, &2's Complenent",     IDM_INTEGER_TYPE_2S
     END
+    POPUP "&View"
+    BEGIN
+        MENUITEM "&Keypad\tUp/Down",            IDM_VIEW_KEYPAD, CHECKED
+    END
     POPUP "\a&Help"
     BEGIN
         MENUITEM "&Help Keys Mode",             IDM_HELP_HELP_KEYS
@@ -226,6 +230,10 @@ BEGIN
         MENUITEM "&Degree",                     IDM_TRIG_DEGREE
         MENUITEM "&Radian",                     IDM_TRIG_RADIAN
         MENUITEM "&Grad",                       IDM_TRIG_GRAD
+    END
+    POPUP "&View"
+    BEGIN
+        MENUITEM "&Keypad\tUp/Down",            IDM_VIEW_KEYPAD, CHECKED
     END
     POPUP "\a&Help"
     BEGIN
@@ -411,6 +419,11 @@ STRINGTABLE DISCARDABLE
 BEGIN
     IDS_PASTE_Z             "Paste the clipboard contents to Z"
     IDS_PASTE_T             "Paste the clipboard contents to T"
+END
+
+STRINGTABLE DISCARDABLE
+BEGIN
+    IDS_VIEW_KEYPAD         "Show or hide the keypad.\n\rHide (roll up) with the 'Up' arrow key.\n\rShow (unroll) with the 'Down' arrow key."
 END
 
 #endif    // English (U.S.) resources

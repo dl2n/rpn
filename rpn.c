@@ -66,6 +66,9 @@ USHORT LastRadix = 10;							// decimal
 STACK Stack = {0, 0, 0, 0}; 					// global binary stack
 BOOL fEnter = FALSE;
 BOOL fHelpKeysMode = FALSE; 					// Help keys mode
+BOOL fKeypadHidden = FALSE;						// Keypad rolled up
+int cyFullWindow = 0;							// Window height with keypad
+int cyCollapsedWindow = 0;						// Window height without keypad
 HWND hDisplay;									// handle to display window
 HWND hwndDialog;
 DWORD cyChar;
@@ -356,6 +359,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             wParam = DELETE_KEY;	// will fall through to WM_CHAR
         else if (wParam == VK_LEFT)
             wParam = VK_BACK;		// will fall through to WM_CHAR
+        else if (wParam == VK_UP || wParam == VK_DOWN)
+        {
+            if (fHelpKeysMode)
+                SendMessage(hwnd, WM_COMMAND, IDM_VIEW_KEYPAD, 0);
+            else
+                SetKeypadVisible(hwnd, wParam == VK_DOWN);
+            return(0);
+        }
         else
             break;					// doesn't need translation
         
@@ -379,6 +390,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_COMMAND:
         DebugPrintf("WM_COMMAND message %u, hwnd = %u\n", wParam, hwnd);
         SetFocus(hwnd);
+
+        // Keypad visibility is shared by both calculator modes.
+        if (wParam == IDM_VIEW_KEYPAD && ! fHelpKeysMode)
+        {
+            SetKeypadVisible(hwnd, fKeypadHidden);
+            return(0);
+        }
         
         switch (usCalcMode) 
         {
@@ -1743,6 +1761,33 @@ BOOL StrNumTest(PUCHAR lpNumStr, USHORT Radix, USHORT usIntegerType,
 
 
 /*
+* SetKeypadVisible
+*
+* INPUTS:  hwnd = calculator dialog window
+*		   fShow = TRUE to show (unroll) the keypad, FALSE to hide (roll up)
+* SUMMARY: Resize the dialog so that only the stack/status display is visible
+*		   when the keypad is hidden.  The top-left corner stays in place.
+*/
+void SetKeypadVisible(HWND hwnd, BOOL fShow)
+{
+	RECT rcWindow;
+	HMENU hMenu = GetMenu(hwnd);
+
+	fKeypadHidden = ! fShow;
+
+	if (hMenu)
+		CheckMenuItem(hMenu, IDM_VIEW_KEYPAD, fShow ? MF_CHECKED : MF_UNCHECKED);
+
+	if (cyFullWindow == 0 || ! GetWindowRect(hwnd, &rcWindow))
+		return;
+
+	SetWindowPos(hwnd, NULL, 0, 0, rcWindow.right - rcWindow.left,
+		fShow ? cyFullWindow : cyCollapsedWindow,
+		SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+
+/*
 * CreateCalc
 *
 * INPUTS:  CalcMode = CALC_MODE_BINARY || CALC_MODE_FLOAT
@@ -1817,9 +1862,6 @@ DWORD CreateCalc(USHORT CalcMode) {
 	
 	hwndDialog = hwnd;	  // set global dialog handle for ErrorBox use
 	
-	DebugPrintf("ShowWindow, hwnd = %u\n", hwnd);
-	ShowWindow(hwnd, SW_SHOWNORMAL);
-	
 	switch (usCalcMode) {
 	case CALC_MODE_BINARY:
 		DisplayItem = IDD_DISPLAY;
@@ -1836,6 +1878,27 @@ DWORD CreateCalc(USHORT CalcMode) {
 	}
 	else
 		DebugPrintf("New Display handle: hDisplay = %u\n", hDisplay);
+
+	//
+	// Record the expanded and collapsed window heights, then apply the
+	// keypad state before the window is shown.  The collapsed height
+	// drops everything in the client area below the display control.
+	//
+	{
+		RECT rcWindow, rcClient, rcDisplay;
+
+		GetWindowRect(hwnd, &rcWindow);
+		GetClientRect(hwnd, &rcClient);
+		GetWindowRect(hDisplay, &rcDisplay);
+		MapWindowPoints(HWND_DESKTOP, hwnd, (LPPOINT)&rcDisplay, 2);
+
+		cyFullWindow = rcWindow.bottom - rcWindow.top;
+		cyCollapsedWindow = cyFullWindow - (rcClient.bottom - rcDisplay.bottom);
+		SetKeypadVisible(hwnd, ! fKeypadHidden);
+	}
+
+	DebugPrintf("ShowWindow, hwnd = %u\n", hwnd);
+	ShowWindow(hwnd, SW_SHOWNORMAL);
 	
 	InvalidateRect(hDisplay, NULL, TRUE);	  // Paint the display now
 
