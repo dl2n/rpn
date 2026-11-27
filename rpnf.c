@@ -1184,41 +1184,12 @@ static BOOL FNumTest(PUCHAR pEntryString, UCHAR Char) {
 */
 BOOL FClipboardCopy(FNUMBER fNumber, USHORT usSignificantDigits,
 					USHORT usFloatDisplayMode) {
-	HGLOBAL hClipboardMem;
-	PUCHAR	pchClipboard;
-	UCHAR	StrNum[DISPLAY_WIDTH + 1];
-	size_t	dwLength;
-	
-	
-	FToA(fNumber, StrNum, sizeof(StrNum), usSignificantDigits, usFloatDisplayMode, FALSE);
-	
-	hClipboardMem = GlobalAlloc(GHND | GMEM_DDESHARE,
-		(dwLength = strlen(StrNum)) + 1);
-	
-	if (! hClipboardMem) {
-		DebugPrintf("Clipboard Copy couldn't allocate %u bytes of memory\n",
-			dwLength);
-		return(FALSE);;
+	char text[DISPLAY_WIDTH + 1];
+	if (!FToA(fNumber, text, sizeof(text), usSignificantDigits, usFloatDisplayMode, FALSE)) {
+		ErrorBox("Could not format the number for the clipboard.");
+		return FALSE;
 	}
-	
-	if (!(pchClipboard = GlobalLock(hClipboardMem))) {
-		DebugPrintf("Clipboard Copy GlobalLock couldn't lock memory\n");
-		GlobalFree(hClipboardMem);
-		return(FALSE);
-	}
-	
-	memcpy(pchClipboard, StrNum, dwLength + 1);
-	
-	GlobalUnlock(hClipboardMem);
-	OpenClipboard(hwndDialog);
-	
-	EmptyClipboard();
-	
-	// Note: SetClipboardData implicitly frees hClipboardMem.
-	SetClipboardData(CF_TEXT, hClipboardMem);
-	
-	CloseClipboard();
-	return(TRUE);
+	return StrClipboardCopy((PUCHAR)text);
 }
 
 
@@ -1234,52 +1205,16 @@ BOOL FClipboardCopy(FNUMBER fNumber, USHORT usSignificantDigits,
 *
 */
 BOOL FClipboardPaste(FNUMBER * pfNumber) {
-	HGLOBAL hClipboardMem;
-	PUCHAR	pClipboardMem;
+	char *text = ReadClipboardToken(hwndDialog);
 	FNUMBER fNumber;
-	BOOL	bReturn = TRUE;
-	PUCHAR	pTemp;
-	
-	
-	OpenClipboard(hwndDialog);
-	
-	if (hClipboardMem = GetClipboardData(CF_TEXT)) {
-		if (! (pClipboardMem = GlobalLock(hClipboardMem))) {
-			DebugPrintf("Clipboard Paste: Couldn't lock clipboard memory\n");
-			return(FALSE);
-		}
-		
-		// Get past any whitespace
-		while(*pClipboardMem <= MAX_CONTROL_CHAR)
-			pClipboardMem++;
-		
-		// Strip off any control characters (like the CR/LF which the console
-		// window copy function puts there.)
-		pTemp = pClipboardMem;
-		while ((*pTemp > MAX_CONTROL_CHAR) && (*pTemp != ' '))
-			pTemp++;
-		
-		*pTemp = '\0';
-		
-		if (FStrNumTest(pClipboardMem, &fNumber)) {
-			// valid number in dwNumber
-			*pfNumber = fNumber;
-		}
-		else {	// warn user that the clipboard doesn't contain a valid number
-				ErrorBox("The clipboard does not contain a\n\
-					valid floating point number.");
-				bReturn = FALSE;
-		}
-		GlobalUnlock(hClipboardMem);
+	BOOL valid = text && FStrNumTest((PUCHAR)text, &fNumber);
+	free(text);
+	if (!valid) {
+		ErrorBox("The clipboard does not contain a valid floating point number.");
+		return FALSE;
 	}
-	else {
-	ErrorBox("The clipboard does not contain a number\n\
-		in the correct format.");
-	bReturn = FALSE;
-	}
-	
-	CloseClipboard();
-	return(bReturn);
+	*pfNumber = fNumber;
+	return TRUE;
 }
 
 
@@ -1304,6 +1239,8 @@ BOOL FStrNumTest(PUCHAR lpNumStr, FNUMBER * pfNumber) {
 	DWORD i;
 	
 	
+	if (dwStrLength > DISPLAY_WIDTH)
+		return FALSE;
 	fNumberStr[0] = '\0';
 	for (i = 0; i < dwStrLength; i++) {
 		if ((lpNumStr[i] == '-') || (lpNumStr[i] == '+') ||
@@ -1346,38 +1283,11 @@ BOOL FStrNumTest(PUCHAR lpNumStr, FNUMBER * pfNumber) {
 *
 */
 BOOL StrClipboardCopy(PUCHAR pString) {
-	HGLOBAL hClipboardMem;
-	PUCHAR	pchClipboard;
-	size_t	dwLength;
-	
-	
-	hClipboardMem = GlobalAlloc(GHND | GMEM_DDESHARE,
-		(dwLength = strlen(pString)) + 1);
-	
-	if (! hClipboardMem) {
-		DebugPrintf("Clipboard Copy couldn't allocate %u bytes of memory\n",
-			dwLength);
-		return(FALSE);;
+	if (!WriteClipboardText(hwndDialog, (const char *)pString)) {
+		ErrorBox("Could not copy the floating point value to the clipboard.");
+		return FALSE;
 	}
-	
-	if (!(pchClipboard = GlobalLock(hClipboardMem))) {
-		DebugPrintf("Clipboard Copy GlobalLock couldn't lock memory\n");
-		GlobalFree(hClipboardMem);
-		return(FALSE);
-	}
-	
-	memcpy(pchClipboard, pString, dwLength + 1);
-	
-	GlobalUnlock(hClipboardMem);
-	OpenClipboard(hwndDialog);
-	
-	EmptyClipboard();
-	
-	// Note: SetClipboardData implicitly frees hClipboardMem.
-	SetClipboardData(CF_TEXT, hClipboardMem);
-	
-	CloseClipboard();
-	return(TRUE);
+	return TRUE;
 }
 
 
@@ -1395,51 +1305,13 @@ BOOL StrClipboardCopy(PUCHAR pString) {
 *
 */
 BOOL StrClipboardPaste(PUCHAR pString) {
-	HGLOBAL hClipboardMem;
-	PUCHAR	pClipboardMem;
+	char *text = ReadClipboardToken(hwndDialog);
 	FNUMBER fNumber;
-	BOOL	bReturn = TRUE;
-	PUCHAR	pTemp;
-	
-	
-	OpenClipboard(hwndDialog);
-	
-	if (hClipboardMem = GetClipboardData(CF_TEXT)) {
-		if (! (pClipboardMem = GlobalLock(hClipboardMem))) {
-			DebugPrintf("Clipboard Paste: Couldn't lock clipboard memory\n");
-			return(FALSE);
-		}
-		
-		// Get past any whitespace
-		while(*pClipboardMem <= MAX_CONTROL_CHAR)
-			pClipboardMem++;
-		
-		// Strip off any control characters (like the CR/LF which the console
-		// window copy function puts there.)
-		pTemp = pClipboardMem;
-		while (*pTemp > MAX_CONTROL_CHAR)
-			pTemp++;
-		
-		*pTemp = '\0';
-		
-		if (FStrNumTest(pClipboardMem, &fNumber)) {
-			// valid number in dwNumber
-			memcpy(pString, pClipboardMem, DISPLAY_WIDTH);
-			pString[DISPLAY_WIDTH] = '\0';
-		}
-		else {	// warn user that the clipboard doesn't contain a valid number
-				ErrorBox("The clipboard does not contain a\n\
-					valid floating point number.");
-				bReturn = FALSE;
-		}
-		GlobalUnlock(hClipboardMem);
-	}
-	else {
-	ErrorBox("The clipboard does not contain a number\n\
-		in the correct format.");
-	bReturn = FALSE;
-	}
-	
-	CloseClipboard();
-	return(bReturn);
+	BOOL valid = text && FStrNumTest((PUCHAR)text, &fNumber);
+	if (valid)
+		memcpy(pString, text, strlen(text) + 1);
+	free(text);
+	if (!valid)
+		ErrorBox("The clipboard does not contain a valid floating point number.");
+	return valid;
 }

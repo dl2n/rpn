@@ -1,4 +1,6 @@
 Keys:
+  Ctrl+C    Copy X to the clipboard.
+  Ctrl+V    Paste clipboard text into X.
   0..9      Normal Digit Keys
   A..F      Hex Digit Keys (only active during Hex Base mode)
   <RET>     Enters current value to bottom level of stack.

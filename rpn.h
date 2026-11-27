@@ -323,6 +323,7 @@ MINCHAR)
 #define RPNF_CLASS          "RpnF"
 #define RPN_MENU            800
 #define RPNF_MENU           801
+#define RPN_ACCELERATORS    802
 
 /*
 * Values for usIntegerType
@@ -378,6 +379,10 @@ char *IntToA(NUMBER value, char *buffer, ULONG length, USHORT radix,
 BOOL StrNumTest(PUCHAR text, USHORT radix, USHORT integerType, USHORT wordSize,
                 PNUMBER number);
 BOOL IsBaseDigit(UCHAR ch, USHORT radix);
+// Paste text is caller-owned and must be released with free().
+char *ExtractPasteToken(const char *text, size_t capacity);
+char *ReadClipboardToken(HWND owner);
+BOOL WriteClipboardText(HWND owner, const char *text);
 
 typedef struct _FLOAT_STATE {
     FSTACK Stack;

@@ -147,20 +147,26 @@ END
 // Menu
 //
 
+RPN_ACCELERATORS ACCELERATORS
+BEGIN
+    "C", IDM_COPY_X, VIRTKEY, CONTROL
+    "V", IDM_PASTE_X, VIRTKEY, CONTROL
+END
+
 RPN_MENU MENU DISCARDABLE 
 BEGIN
     POPUP "&Edit"
     BEGIN
         POPUP "&Copy"
         BEGIN
-            MENUITEM "Copy from &X",                IDM_COPY_X
+            MENUITEM "Copy from &X\tCtrl+C",        IDM_COPY_X
             MENUITEM "Copy from &Y",                IDM_COPY_Y
             MENUITEM "Copy from &Z",                IDM_COPY_Z
             MENUITEM "Copy from &T",                IDM_COPY_T
         END
         POPUP "&Paste"
         BEGIN
-            MENUITEM "Paste to &X",                 IDM_PASTE_X
+            MENUITEM "Paste to &X\tCtrl+V",         IDM_PASTE_X
             MENUITEM "Paste to &Y",                 IDM_PASTE_Y
             MENUITEM "Paste to &Z",                 IDM_PASTE_Z
             MENUITEM "Paste to &T",                 IDM_PASTE_T
@@ -205,14 +211,14 @@ BEGIN
     BEGIN
         POPUP "&Copy"
         BEGIN
-            MENUITEM "Copy from &X",                IDM_COPY_X
+            MENUITEM "Copy from &X\tCtrl+C",        IDM_COPY_X
             MENUITEM "Copy from &Y",                IDM_COPY_Y
             MENUITEM "Copy from &Z",                IDM_COPY_Z
             MENUITEM "Copy from &T",                IDM_COPY_T
         END
         POPUP "&Paste"
         BEGIN
-            MENUITEM "Paste to &X",                 IDM_PASTE_X
+            MENUITEM "Paste to &X\tCtrl+V",         IDM_PASTE_X
             MENUITEM "Paste to &Y",                 IDM_PASTE_Y
             MENUITEM "Paste to &Z",                 IDM_PASTE_Z
             MENUITEM "Paste to &T",                 IDM_PASTE_T

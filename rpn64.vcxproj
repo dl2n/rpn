@@ -80,6 +80,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="rpn.c" />
+    <ClCompile Include="rpn_clipboard.c" />
+    <ClCompile Include="rpn_clipboard_win32.c" />
     <ClCompile Include="rpn_display.c" />
     <ClCompile Include="rpn_reg.c" />
     <ClCompile Include="rpnf.c" />

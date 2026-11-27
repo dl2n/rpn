@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <windows.h>
@@ -734,6 +735,31 @@ static int CheckFloatDisplay(void)
     return failures;
 }
 
+static int CheckClipboardText(void)
+{
+    const char indented[] = "\t  -12.5\r\nmore";
+    const char unterminated[] = {' ', '4', '2'};
+    char oversized[DISPLAY_WIDTH + 2];
+    FNUMBER value = 17.0;
+    char *token = ExtractPasteToken(indented, sizeof(indented));
+    int failures = 0;
+
+    failures += Check(token && strcmp(token, "-12.5") == 0,
+                      "clipboard paste copies one token without editing the source");
+    free(token);
+    token = ExtractPasteToken(unterminated, sizeof(unterminated));
+    failures += Check(!token, "reject a clipboard buffer with no terminator");
+    free(token);
+    token = ExtractPasteToken(" \t", sizeof(" \t"));
+    failures += Check(!token, "reject a whitespace-only clipboard buffer");
+    free(token);
+    memset(oversized, '+', sizeof(oversized) - 1);
+    oversized[sizeof(oversized) - 1] = '\0';
+    failures += Check(!FStrNumTest((PUCHAR)oversized, &value) && value == 17.0,
+                      "reject oversized float paste before writing the parser buffer");
+    return failures;
+}
+
 int main(void)
 {
     char buffer[DISPLAY_WIDTH + 1];
@@ -775,6 +801,7 @@ int main(void)
     failures += CheckIntegerDisplay();
     failures += CheckFloatDisplay();
     failures += CheckRegistryState();
+    failures += CheckClipboardText();
 
     if (failures != 0)
         return 1;

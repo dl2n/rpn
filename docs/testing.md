@@ -90,18 +90,25 @@ checks). Pass the reviewed fixtures and a new artifact directory:
 ```
 
 The runner builds a fresh x64 Release executable in the artifact directory.
-The only source change in that copy is the registry path in `rpn_reg.c`,
-redirected to `HKCU\Software\BruceK\RPNDesktopTests\<run-id>`. It never
-launches an existing executable, and normal saved calculator state is
-neither read nor overwritten. The runner stops only the process it started
-and deletes only its unique registry leaf when it exits. The copied
-sources and build outputs remain available for inspection.
+That copy redirects the registry to
+`HKCU\Software\BruceK\RPNDesktopTests\<run-id>` and replaces only the Win32
+clipboard transport with a file-backed test transport. It never launches
+an existing executable or uses the user's registry state or clipboard.
+The runner stops only the process it started and deletes only its unique
+registry leaf when it exits. The copied sources and build outputs remain
+available for inspection.
 
 The runner uses real menu, keypad, and keyboard input against this executable.
 It checks collapsed-window geometry, verifies saved register values, and
 compares both stacks' displays before and after restart. The runner
 never records or overwrites expected images. A pixel mismatch leaves the
 fixture untouched and writes actual and diff PNGs.
+
+The clipboard checkpoints exercise Copy/Paste for X, Y, Z, and T in both
+modes, the X shortcuts while collapsed, plain `C`, active float entry,
+rejected paste, and Help Keys. A manual round trip with PowerShell verified
+the native clipboard on Windows. The automated file transport does not
+exercise Windows clipboard ownership or data transfer.
 
 The checked-in baseline is `tests\fixtures\legacy-desktop`: x64 Release
 from the pinned revision, Windows build 26300.10075, 3840×2160 at 144 DPI,
@@ -118,6 +125,12 @@ exercise both mode switches and restart from there. Negative coordinate
 encoding is checked in the registry tests, not by moving a window to a
 secondary monitor. Use `-TraceGeometry` to log the outer window, client
 and crop bounds, DPI, and saved position in the run's `geometry.txt`.
+Use `-MeasureMenus` to record native popup item widths in `menu-widths.txt`.
+At 150% scaling, `MNS_NOCHECK` removed 28 pixels from eligible popups in
+both modes (for example, integer Base went from 166 to 138 pixels and Copy
+from 194 to 166). View and Help stayed unchanged; right-side shortcut and
+submenu layout remains Windows-managed.
+
 The build, pixel comparator, and cancellation notification can be
 checked without any app launch, desktop input, or registry access:
 

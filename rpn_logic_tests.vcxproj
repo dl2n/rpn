@@ -83,6 +83,8 @@
       <PreprocessorDefinitions>WinMain=RpnWinMain;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <ClCompile Include="rpn_display.c" />
+    <ClCompile Include="rpn_clipboard.c" />
+    <ClCompile Include="rpn_clipboard_win32.c" />
     <ClCompile Include="rpn_reg.c" />
     <ClCompile Include="rpnf.c" />
     <ClCompile Include="rpn_stack.c" />

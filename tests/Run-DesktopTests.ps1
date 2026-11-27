@@ -20,6 +20,9 @@ param(
     [Parameter(ParameterSetName = 'Desktop')]
     [switch] $VerifyPlacement,
 
+    [Parameter(ParameterSetName = 'Desktop')]
+    [switch] $MeasureMenus,
+
     [Parameter(Mandatory, ParameterSetName = 'SelfTest')]
     [switch] $SelfTest,
 
@@ -66,6 +69,12 @@ function Build-TestCopy([string] $Output, [string] $RegistryPath) {
         $null = [IO.Directory]::CreateDirectory((Split-Path -Parent $destination))
         Copy-Item -LiteralPath (Join-Path $SourceDirectory $file) -Destination $destination
     }
+
+    $transport = Join-Path $build 'rpn_clipboard_win32.c'
+    if ($inputs -notcontains 'rpn_clipboard_win32.c') {
+        throw 'Cannot isolate the clipboard in this test build. No executable was launched.'
+    }
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'RpnTestClipboard.c') -Destination $transport
 
     $registrySource = Join-Path $build 'rpn_reg.c'
     $productionKey = 'const TCHAR szRegKey[] = "Software\\BruceK\\RPN";'
@@ -133,6 +142,8 @@ foreach ($field in $metadata.Keys) {
 
 $registryPath = 'Software\BruceK\RPNDesktopTests\' + [Guid]::NewGuid().ToString('N')
 $Executable = Build-TestCopy $artifactPath $registryPath
+$clipboardPath = Join-Path (Split-Path -Parent $Executable) 'rpn-test-clipboard.txt'
+[IO.File]::WriteAllText($clipboardPath, '', [Text.Encoding]::ASCII)
 $existing = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($registryPath)
 if ($null -ne $existing) {
     $existing.Dispose()
@@ -175,6 +186,132 @@ function Invoke-Menu([IntPtr] $Window, [char] $Menu, [char] $Item) {
 
 function Send-RpnKeys([IntPtr] $Window, [UInt16[]] $Keys) {
     foreach ($key in $Keys) { [RpnDesktop]::Key($Window, $key, 0) }
+}
+
+function Wait-Popup([IntPtr] $Window, [int[]] $Path) {
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        $width = [RpnDesktop]::PopupWidth($Window, $Path)
+        if ($width -gt 0) { return $width }
+        Start-Sleep -Milliseconds 25
+    } while ($clock.ElapsedMilliseconds -lt 5000)
+    throw "RPN popup did not open: $($Path -join '/')."
+}
+
+function Invoke-EditRegister([IntPtr] $Window, [int] $Submenu, [char] $Register) {
+    [RpnDesktop]::Key($Window, 0x45, 0x12)
+    $null = Wait-Popup $Window @(0)
+    [RpnDesktop]::Key($Window, $(if ($Submenu -eq 0) { 0x43 } else { 0x50 }), 0)
+    $null = Wait-Popup $Window @(0, $Submenu)
+    [RpnDesktop]::Key($Window, [UInt16]$Register, 0)
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    while ([RpnDesktop]::MenuActive($Window)) {
+        if ($clock.ElapsedMilliseconds -ge 5000) { throw 'Edit submenu did not close.' }
+        Start-Sleep -Milliseconds 25
+    }
+}
+
+function Write-MenuWidths([IntPtr] $Window, [bool] $Floating) {
+    $panes = @(
+        @{ Name = 'Edit'; Key = 'E'; Path = @(0) }
+        @{ Name = 'Copy'; Key = 'E'; Child = 'C'; Path = @(0, 0) }
+        @{ Name = 'Paste'; Key = 'E'; Child = 'P'; Path = @(0, 1) }
+        @{ Name = 'Base'; Key = 'B'; Path = @(1) }
+    )
+    if ($Floating) {
+        $panes += @{ Name = 'Trig'; Key = 'T'; Path = @(2) }
+        $panes += @{ Name = 'View'; Key = 'V'; Path = @(3) }
+        $panes += @{ Name = 'Help'; Key = 'H'; Path = @(4) }
+    } else {
+        $panes += @{ Name = 'Word Size'; Key = 'W'; Path = @(2) }
+        $panes += @{ Name = 'Integer'; Key = 'I'; Path = @(3) }
+        $panes += @{ Name = 'View'; Key = 'V'; Path = @(4) }
+        $panes += @{ Name = 'Help'; Key = 'H'; Path = @(5) }
+    }
+
+    foreach ($pane in $panes) {
+        [RpnDesktop]::Key($Window, [UInt16][char]$pane.Key, 0x12)
+        if ($pane.ContainsKey('Child')) {
+            $null = Wait-Popup $Window @($pane.Path[0])
+            [RpnDesktop]::Key($Window, [UInt16][char]$pane.Child, 0)
+        }
+        $width = Wait-Popup $Window $pane.Path
+        $mode = if ($Floating) { 'Float' } else { 'Integer' }
+        Add-Content -LiteralPath (Join-Path $artifactPath 'menu-widths.txt') -Value "$mode $($pane.Name): $width px"
+        [RpnDesktop]::CancelMenu($Window)
+        $clock = [Diagnostics.Stopwatch]::StartNew()
+        while ([RpnDesktop]::MenuActive($Window)) {
+            if ($clock.ElapsedMilliseconds -ge 5000) { throw "Menu did not close: $($pane.Name)." }
+            Start-Sleep -Milliseconds 25
+        }
+    }
+}
+
+function Set-TestClipboard([string] $Text) {
+    [IO.File]::WriteAllText($clipboardPath, $Text, [Text.Encoding]::ASCII)
+}
+
+function Assert-TestClipboard([string] $Expected) {
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        [RpnDesktop]::CheckEscape()
+        try {
+            $actual = [IO.File]::ReadAllText($clipboardPath, [Text.Encoding]::ASCII)
+            if ($actual -ceq $Expected) { return }
+        } catch [IO.IOException] {
+            $actual = '<temporarily unavailable>'
+        }
+        Start-Sleep -Milliseconds 25
+    } while ($clock.ElapsedMilliseconds -lt 5000)
+    throw "Expected clipboard text [$Expected], got [$actual]."
+}
+
+function Dismiss-CalculatorMessage([IntPtr] $Window, [string] $Caption) {
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        $messageBox = [RpnDesktop]::OwnedMessageBox($Window, $Caption)
+        if ($messageBox -ne [IntPtr]::Zero) {
+            [RpnDesktop]::Key($messageBox, 0x0D, 0)
+            while ([RpnDesktop]::OwnedMessageBox($Window, $Caption) -eq $messageBox) {
+                if ($clock.ElapsedMilliseconds -ge 5000) { throw "Message box did not close: $Caption." }
+                Start-Sleep -Milliseconds 25
+            }
+            return
+        }
+        Start-Sleep -Milliseconds 25
+    } while ($clock.ElapsedMilliseconds -lt 5000)
+    throw "Expected calculator message box: $Caption."
+}
+
+function Assert-EditRegisters([IntPtr] $Window, [int] $Display, [string[]] $Values) {
+    $registers = 'XYZT'
+    $paint = Save-Checkpoint $Window $Display "clipboard-$Display-initial" -ObserveOnly
+    for ($i = 0; $i -lt $registers.Length; ++$i) {
+        $register = $registers[$i]
+        $copyLabel = "Copy from &$register"
+        $pasteLabel = "Paste to &$register"
+        if ($i -eq 0) {
+            $copyLabel += "`tCtrl+C"
+            $pasteLabel += "`tCtrl+V"
+        }
+        if ([RpnDesktop]::EditRegisterLabel($Window, 0, $i) -cne $copyLabel -or
+            [RpnDesktop]::EditRegisterLabel($Window, 1, $i) -cne $pasteLabel) {
+            throw "Unexpected Copy/Paste menu labels for $register."
+        }
+        Set-TestClipboard $Values[$i]
+        Invoke-EditRegister $Window 1 $register
+        $paint = Save-Checkpoint $Window $Display "clipboard-$Display-$register" $paint -ObserveOnly
+        # A sentinel distinguishes copied text from the paste fixture.
+        Set-TestClipboard 'not copied yet'
+        Invoke-EditRegister $Window 0 $register
+        Assert-TestClipboard $Values[$i]
+    }
+    # Read all registers again after all writes; none may clobber a neighbor.
+    for ($i = 0; $i -lt $registers.Length; ++$i) {
+        Set-TestClipboard 'not copied yet'
+        Invoke-EditRegister $Window 0 $registers[$i]
+        Assert-TestClipboard $Values[$i]
+    }
 }
 
 function Wait-Keypad([IntPtr] $Window, [int] $Display, [bool] $Expanded) {
@@ -281,7 +418,7 @@ function Close-Rpn([Diagnostics.Process] $Process, [IntPtr] $Window) {
     if ($Process.ExitCode -ne 0) { throw "RPN exited with code $($Process.ExitCode)." }
 }
 
-function Assert-SavedState([switch] $AfterModeSwitch, [int] $ExpectedMode = 2) {
+function Assert-SavedState([switch] $AfterModeSwitch, [int] $ExpectedMode = 2, [switch] $AfterClipboard) {
     $state = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($registryPath)
     if ($null -eq $state) { throw 'The application did not save its registry state.' }
     try {
@@ -293,7 +430,7 @@ function Assert-SavedState([switch] $AfterModeSwitch, [int] $ExpectedMode = 2) {
             Radix = 10
             WordSize = 8
             IntegerType = 0
-            LastRadix = 8
+            LastRadix = $(if ($AfterClipboard) { 16 } else { 8 })
             CalcMode = $ExpectedMode
             KeypadHidden = 1
             FloatAngleType = 2
@@ -312,6 +449,10 @@ function Assert-SavedState([switch] $AfterModeSwitch, [int] $ExpectedMode = 2) {
         if ($AfterModeSwitch) {
             $stacks['Binary Stack'] = @(23, 3, 2, 1)
             $stacks['Float Stack'] = @(4, 10.5, 0, 0)
+        }
+        if ($AfterClipboard) {
+            $stacks['Binary Stack'] = @(67, 32, 43, 54)
+            $stacks['Float Stack'] = @(2.5, 3.75, 4.125, 5.25)
         }
         foreach ($name in $stacks.Keys) {
             $bytes = $state.GetValue($name, $null)
@@ -336,7 +477,7 @@ function Assert-SavedState([switch] $AfterModeSwitch, [int] $ExpectedMode = 2) {
 
 $integerDisplay = 257
 $floatDisplay = 261
-$checkpointCount = 12
+$checkpointCount = 14
 $process = $null
 $expectingEscape = $false
 [RpnDesktop]::RegisterEscape()
@@ -501,6 +642,72 @@ try {
     $null = Wait-Keypad $dialog $integerDisplay $false
     Close-Rpn $process $dialog
     Assert-SavedState -AfterModeSwitch -ExpectedMode 1
+    $process.Dispose()
+    $process = $null
+
+    Write-Checkpoint 13 'copy and paste all integer registers and verify the X shortcuts'
+    $process = Start-Process -FilePath $Executable -PassThru
+    $dialog = Wait-Dialog $process 'Rpn'
+    $null = Wait-Keypad $dialog $integerDisplay $false
+    if ($MeasureMenus) { Write-MenuWidths $dialog $false }
+    Invoke-Menu $dialog 'B' 'H'
+    $paint = Save-Checkpoint $dialog $integerDisplay 'hex-before-plain-c' -ObserveOnly
+    Send-RpnKeys $dialog @(0x2E, 0x43, 0x0D)
+    $null = Save-Checkpoint $dialog $integerDisplay 'hex-after-plain-c' $paint -ObserveOnly
+    Set-TestClipboard 'not copied yet'
+    [RpnDesktop]::Key($dialog, 0x43, 0x11)
+    Assert-TestClipboard 'c'
+    Invoke-Menu $dialog 'B' 'D'
+    Assert-EditRegisters $dialog $integerDisplay @('21', '32', '43', '54')
+    Set-TestClipboard " `t67`r`ntrailing"
+    [RpnDesktop]::Key($dialog, 0x56, 0x11)
+    [RpnDesktop]::Key($dialog, 0x43, 0x11)
+    Assert-TestClipboard '67'
+    Set-TestClipboard 'invalid'
+    [RpnDesktop]::Key($dialog, 0x56, 0x11)
+    Dismiss-CalculatorMessage $dialog 'Error!'
+    [RpnDesktop]::Key($dialog, 0x43, 0x11)
+    Assert-TestClipboard '67'
+    Invoke-Menu $dialog 'H' 'H'
+    Set-TestClipboard '88'
+    [RpnDesktop]::Key($dialog, 0x43, 0x11)
+    Dismiss-CalculatorMessage $dialog 'RPN Help Keys Mode'
+    [RpnDesktop]::Key($dialog, 0x56, 0x11)
+    Dismiss-CalculatorMessage $dialog 'RPN Help Keys Mode'
+    Assert-TestClipboard '88'
+    Invoke-Menu $dialog 'H' 'H'
+    [RpnDesktop]::Key($dialog, 0x43, 0x11)
+    Assert-TestClipboard '67'
+
+    Write-Checkpoint 14 'copy and paste float registers, including active entry'
+    Invoke-Menu $dialog 'B' 'F'
+    $floatDialog = Wait-Dialog $process 'RpnF'
+    $null = Wait-Keypad $floatDialog $floatDisplay $false
+    if ($MeasureMenus) { Write-MenuWidths $floatDialog $true }
+    $paint = Save-Checkpoint $floatDialog $floatDisplay 'float-before-plain-c' -ObserveOnly
+    Set-TestClipboard '0'
+    [RpnDesktop]::Key($floatDialog, 0x56, 0x11)
+    $paint = Save-Checkpoint $floatDialog $floatDisplay 'float-before-cosine' $paint -ObserveOnly
+    Send-RpnKeys $floatDialog @(0x43)
+    $paint = Save-Checkpoint $floatDialog $floatDisplay 'float-after-cosine' $paint -ObserveOnly
+    [RpnDesktop]::Key($floatDialog, 0x43, 0x11)
+    Assert-TestClipboard '1.'
+    Send-RpnKeys $floatDialog @(0x31, 0xBE, 0x32, 0x30)
+    $paint = Save-Checkpoint $floatDialog $floatDisplay 'float-before-edit-paste' $paint -ObserveOnly
+    [RpnDesktop]::Key($floatDialog, 0x43, 0x11)
+    Assert-TestClipboard '1.20'
+    Set-TestClipboard '3.40'
+    [RpnDesktop]::Key($floatDialog, 0x56, 0x11)
+    $paint = Save-Checkpoint $floatDialog $floatDisplay 'float-edit-paste' $paint -ObserveOnly
+    Send-RpnKeys $floatDialog @(0x0D)
+    $null = Save-Checkpoint $floatDialog $floatDisplay 'float-committed-paste' $paint -ObserveOnly
+    [RpnDesktop]::Key($floatDialog, 0x43, 0x11)
+    Assert-TestClipboard '3.4'
+    Assert-EditRegisters $floatDialog $floatDisplay @('2.5', '3.75', '4.125', '5.25')
+    Invoke-Menu $floatDialog 'B' 'D'
+    $dialog = Wait-Dialog $process 'Rpn'
+    Close-Rpn $process $dialog
+    Assert-SavedState -AfterModeSwitch -ExpectedMode 1 -AfterClipboard
 } catch {
     if (!$expectingEscape -or $_.Exception.GetBaseException() -isnot [OperationCanceledException]) {
         throw

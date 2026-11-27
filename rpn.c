@@ -86,6 +86,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 					 LPSTR	   lpCmdLine,
 					 int	   nCmdShow) {
 	MSG msg;
+	HACCEL accelerators;
 	WNDCLASS wndclass;
 	DWORD rc;
 #ifndef NO_TOOLTIPS
@@ -154,6 +155,12 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 	}
 	
 	hInst = hInstance;
+	accelerators = LoadAccelerators(hInstance, MAKEINTRESOURCE(RPN_ACCELERATORS));
+	if (!accelerators) {
+		rc = GetLastError();
+		DebugPrintf("Could not load clipboard shortcuts: %u\n", rc);
+		return rc ? (int)rc : ERROR_RESOURCE_NAME_NOT_FOUND;
+	}
 	
 	RestoreRPNState();
 	
@@ -164,6 +171,9 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 	// When we get a WM_QUIT message, GetMessage returns 0.
 	
 	while (GetMessage(&msg, NULL, 0, 0)) {
+		if ((msg.hwnd == hwndDialog || IsChild(hwndDialog, msg.hwnd)) &&
+			TranslateAccelerator(hwndDialog, accelerators, &msg))
+			continue;
 		TranslateMessage(&msg);
 		if (msg.message == WM_COMMAND && msg.wParam == IDM_CHANGE_MODE)
 			CreateCalc(Calculator.Mode);
@@ -276,6 +286,38 @@ BOOL CALLBACK EnumChildWindowsProc( HWND hwnd, LPARAM lParam )
 
 #endif
 
+static void TrimUnusedCheckGutter(HMENU popup)
+{
+    int count = GetMenuItemCount(popup);
+    int index;
+    MENUINFO menu = {sizeof(menu), MIM_STYLE};
+
+    if (count <= 0)
+        return;
+    for (index = 0; index < count; ++index) {
+        MENUITEMINFO item = {sizeof(item), MIIM_ID | MIIM_STATE | MIIM_FTYPE | MIIM_BITMAP | MIIM_CHECKMARKS};
+        if (!GetMenuItemInfo(popup, index, TRUE, &item)) {
+            DebugPrintf("Could not inspect popup item: %u\n", GetLastError());
+            return;
+        }
+        // View and Help toggle checkmarks even if currently unchecked.
+        if (item.wID == IDM_VIEW_KEYPAD || item.wID == IDM_HELP_HELP_KEYS ||
+            (item.fState & MFS_CHECKED) || (item.fType & MFT_RADIOCHECK) ||
+            item.hbmpItem || item.hbmpChecked || item.hbmpUnchecked)
+            return;
+    }
+
+    if (!GetMenuInfo(popup, &menu)) {
+        DebugPrintf("Could not inspect popup style: %u\n", GetLastError());
+        return;
+    }
+    if (!(menu.dwStyle & MNS_NOCHECK)) {
+        menu.dwStyle |= MNS_NOCHECK;
+        if (!SetMenuInfo(popup, &menu))
+            DebugPrintf("Could not trim the popup checkmark gutter: %u\n", GetLastError());
+    }
+}
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 {
     HWND hButton;
@@ -296,6 +338,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         }
         break;
         
+    case WM_INITMENUPOPUP:
+        if (!HIWORD(lParam))
+            TrimUnusedCheckGutter((HMENU)wParam);
+        break;
+
     case WM_KEYDOWN:
         // Non-character keys need to be trapped here so that WM_CHAR
         // can operate on them.
@@ -332,6 +379,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         // Fall through
         
     case WM_COMMAND:
+        // WM_CHAR reaches this branch with a character, not a notification.
+        if (message == WM_COMMAND)
+            wParam = LOWORD(wParam);
         DebugPrintf("WM_COMMAND message %u, hwnd = %u\n", wParam, hwnd);
         SetFocus(hwnd);
 
@@ -1424,19 +1474,23 @@ static void CalcIt(DWORD dwOperation, HWND hwnd)
 		break;
 		
 	case IDM_PASTE_X:
-		ClipboardPaste(&pStack->X, Radix, usIntegerType);
+		if (!ClipboardPaste(&pStack->X, Radix, usIntegerType))
+			return;
 		break;
 		
 	case IDM_PASTE_Y:
-		ClipboardPaste(&pStack->Y, Radix, usIntegerType);
+		if (!ClipboardPaste(&pStack->Y, Radix, usIntegerType))
+			return;
 		break;
 		
 	case IDM_PASTE_Z:
-		ClipboardPaste(&pStack->Z, Radix, usIntegerType);
+		if (!ClipboardPaste(&pStack->Z, Radix, usIntegerType))
+			return;
 		break;
 		
 	case IDM_PASTE_T:
-		ClipboardPaste(&pStack->T, Radix, usIntegerType);
+		if (!ClipboardPaste(&pStack->T, Radix, usIntegerType))
+			return;
 		break;
 		
 	default:
@@ -1620,7 +1674,7 @@ BOOL StrNumTest(PUCHAR lpNumStr, USHORT Radix, USHORT usIntegerType, USHORT Word
 	size_t dwStrLength = strlen(lpNumStr);
 	USHORT Digit;
 	BOOL fReturn = TRUE;
-	DWORD i;
+	size_t i;
 	
 	
 	DebugPrintf("String: [%s]\n", lpNumStr);
@@ -1850,43 +1904,13 @@ DWORD CreateCalc(CALC_MODE CalcMode) {
 *
 */
 BOOL ClipboardCopy(NUMBER Number, USHORT Radix, USHORT usIntegerType) {
-	HGLOBAL hClipboardMem;
-	PUCHAR	pchClipboard;
-	UCHAR	StrNum[DISPLAY_WIDTH + 1];
-	size_t	dwLength;
-	
-	
-	IntToA(Number, StrNum, sizeof(StrNum), Radix, usIntegerType, Calculator.Integer.WordSize, FALSE);
-	
-	hClipboardMem = GlobalAlloc(GHND | GMEM_DDESHARE,
-		(dwLength = strlen(StrNum)) + 1);
-	
-	DebugPrintf("Copy String: [%s], Length: %u\n", StrNum, dwLength);
-	
-	if (! hClipboardMem) {
-		DebugPrintf("Clipboard Copy couldn't allocate %u bytes of memory\n",
-			dwLength);
-		return(FALSE);
+	char text[sizeof(NUMBER) * CHAR_BIT + 1];
+	if (!IntToA(Number, text, sizeof(text), Radix, usIntegerType, Calculator.Integer.WordSize, FALSE) ||
+		!WriteClipboardText(hwndDialog, text)) {
+		ErrorBox("Could not copy the number to the clipboard.");
+		return FALSE;
 	}
-	
-	if (!(pchClipboard = GlobalLock(hClipboardMem))) {
-		DebugPrintf("Clipboard Copy GlobalLock couldn't lock memory\n");
-		GlobalFree(hClipboardMem);
-		return(FALSE);
-	}
-	
-	memcpy(pchClipboard, StrNum, dwLength + 1);
-	
-	GlobalUnlock(hClipboardMem);
-	OpenClipboard(hwndDialog);		  // HWND?
-	
-	EmptyClipboard();
-	
-	// Note: SetClipboardData implicitly frees hClipboardMem.
-	SetClipboardData(CF_TEXT, hClipboardMem);
-	
-	CloseClipboard();
-	return(TRUE);
+	return TRUE;
 }
 
 
@@ -1905,51 +1929,15 @@ BOOL ClipboardCopy(NUMBER Number, USHORT Radix, USHORT usIntegerType) {
 *
 */
 BOOL ClipboardPaste(PNUMBER pNumber, USHORT Radix, USHORT usIntegerType) {
-	HGLOBAL hClipboardMem;
-	PUCHAR	pClipboardMem;
-	NUMBER	Number = 0;
-	BOOL	fReturn = TRUE;
-	PUCHAR	pTemp;
-	
-	
-	OpenClipboard(hwndDialog);
-	
-	if (hClipboardMem = GetClipboardData(CF_TEXT)) {
-		if (! (pClipboardMem = GlobalLock(hClipboardMem))) {
-			DebugPrintf("Clipboard Paste: Couldn't lock clipboard memory\n");
-			return(FALSE);
-		}
-		
-		// Get past any whitespace
-		while(*pClipboardMem <= MAX_CONTROL_CHAR)
-			pClipboardMem++;
-		
-		
-		// Strip off any control characters (like the CR/LF which the console
-		// window copy function puts there and any trailing spaces.)
-		pTemp = pClipboardMem;
-		while (*pTemp > MAX_CONTROL_CHAR)
-			pTemp++;
-		*pTemp = '\0';
-		
-		if (StrNumTest(pClipboardMem, Radix, usIntegerType, Calculator.Integer.WordSize, &Number)) {
-			// valid number in Number, store and cast
-			*pNumber = Number;
-			CastNumber(&Calculator.Integer, pNumber);
-		}
-		else {	// warn user that the clipboard doesn't contain a valid number
-				ErrorBox("The clipboard does not contain a\n\
-					valid number in the current base.");
-				fReturn = FALSE;
-		}
-		GlobalUnlock(hClipboardMem);
+	char *text = ReadClipboardToken(hwndDialog);
+	NUMBER number;
+	BOOL valid = text && StrNumTest((PUCHAR)text, Radix, usIntegerType, Calculator.Integer.WordSize, &number);
+	free(text);
+	if (!valid) {
+		ErrorBox("The clipboard does not contain a valid number in the current base.");
+		return FALSE;
 	}
-	else {
-	ErrorBox("The clipboard does not contain a number\n\
-		in the correct format.");
-	fReturn = FALSE;
-	}
-	
-	CloseClipboard();
-	return(fReturn);
+	CastNumber(&Calculator.Integer, &number);
+	*pNumber = number;
+	return TRUE;
 }

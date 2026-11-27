@@ -91,6 +91,11 @@ public static class RpnDesktop
     [DllImport("user32.dll")] private static extern int GetMenuItemCount(IntPtr menu);
     [DllImport("user32.dll")] private static extern uint GetMenuItemID(IntPtr menu, int position);
     [DllImport("user32.dll")] private static extern IntPtr GetSubMenu(IntPtr menu, int position);
+    [DllImport("user32.dll")] private static extern bool GetMenuItemRect(IntPtr window, IntPtr menu, uint position, out Rect bounds);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetMenuString(IntPtr menu, uint position, StringBuilder text, int capacity, uint flags);
+    [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr window, uint command);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr window, StringBuilder text, int capacity);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool PostMessage(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] private static extern uint GetMenuState(IntPtr menu, uint position, uint flags);
     [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] private static extern uint GetDpiForSystem();
@@ -170,6 +175,55 @@ public static class RpnDesktop
         if (!GetGUIThreadInfo(thread, ref info))
             throw new Win32Exception();
         return info.MenuOwner == dialog && (info.Flags & 0x0004) != 0;
+    }
+
+    private static IntPtr Popup(IntPtr dialog, int[] path)
+    {
+        IntPtr menu = GetMenu(dialog);
+        foreach (int position in path)
+            menu = GetSubMenu(menu, position);
+        if (menu == IntPtr.Zero)
+            throw new InvalidOperationException("The expected calculator popup is missing.");
+        return menu;
+    }
+
+    public static int PopupWidth(IntPtr dialog, params int[] path)
+    {
+        CheckEscape();
+        int width = 0;
+        WithPhysicalCoordinates(delegate {
+            Rect bounds;
+            if (GetMenuItemRect(IntPtr.Zero, Popup(dialog, path), 0, out bounds))
+                width = bounds.Right - bounds.Left;
+        });
+        return width;
+    }
+
+    public static void CancelMenu(IntPtr dialog)
+    {
+        RequireForeground(dialog);
+        if (!PostMessage(dialog, 0x001F, UIntPtr.Zero, IntPtr.Zero)) // WM_CANCELMODE
+            throw new Win32Exception();
+    }
+
+    public static string EditRegisterLabel(IntPtr dialog, int submenu, uint position)
+    {
+        StringBuilder text = new StringBuilder(128);
+        if (GetMenuString(Popup(dialog, new int[] {0, submenu}), position, text, text.Capacity, 0x0400) == 0)
+            throw new InvalidOperationException("The Edit register label is missing.");
+        return text.ToString();
+    }
+
+    public static IntPtr OwnedMessageBox(IntPtr dialog, string caption)
+    {
+        CheckEscape();
+        IntPtr foreground = GetForegroundWindow();
+        StringBuilder text = new StringBuilder(128);
+        if (GetWindow(foreground, 4) == dialog &&
+            GetClassName(foreground, text, text.Capacity) != 0 && text.ToString() == "#32770" &&
+            GetWindowText(foreground, text, text.Capacity) != 0 && text.ToString() == caption)
+            return foreground;
+        return IntPtr.Zero;
     }
 
     public static IntPtr ActiveDialog(int pid, string className)
