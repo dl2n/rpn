@@ -12,16 +12,10 @@ param(
     [string] $FixtureDirectory,
 
     [Parameter(ParameterSetName = 'Desktop')]
-    [switch] $Record,
-
-    [Parameter(ParameterSetName = 'Desktop')]
     [switch] $VerifyEscape,
 
     [Parameter(ParameterSetName = 'Desktop')]
     [switch] $TraceGeometry,
-
-    [Parameter(ParameterSetName = 'Desktop')]
-    [switch] $LegacyPlacement,
 
     [Parameter(ParameterSetName = 'Desktop')]
     [switch] $VerifyPlacement,
@@ -101,12 +95,6 @@ function Build-TestCopy([string] $Output, [string] $RegistryPath) {
 if ($PSCmdlet.ParameterSetName -eq 'Desktop' -and !$ConfirmDesktopInput) {
     throw 'Confirm that the test can take focus, move the pointer, and reserve Esc.'
 }
-if ($Record -and $VerifyEscape) {
-    throw 'Record fixtures and verify Esc in separate runs.'
-}
-if ($VerifyPlacement -and ($LegacyPlacement -or $Record)) {
-    throw 'Verify nonzero placement separately from recording or replaying legacy placement.'
-}
 if ($BuildOnly) {
     $output = New-OwnedDirectory $ArtifactDirectory
     $key = 'Software\BruceK\RPNDesktopTests\' + [Guid]::NewGuid().ToString('N')
@@ -135,15 +123,11 @@ $metadata = @{
     Resolution = "$($displayProfile[0])x$($displayProfile[1])"
 }
 $artifactPath = New-OwnedDirectory $ArtifactDirectory
-if ($Record) {
-    $fixturePath = New-OwnedDirectory $FixtureDirectory
-} else {
-    $fixturePath = (Get-Item -LiteralPath $FixtureDirectory).FullName
-    $recorded = Get-Content -LiteralPath (Join-Path $fixturePath 'profile.json') -Raw | ConvertFrom-Json
-    foreach ($field in $metadata.Keys) {
-        if ($recorded.$field -ne $metadata[$field]) {
-            throw "Desktop profile mismatch for $field`: expected $($recorded.$field), got $($metadata[$field])."
-        }
+$fixturePath = (Get-Item -LiteralPath $FixtureDirectory).FullName
+$recorded = Get-Content -LiteralPath (Join-Path $fixturePath 'profile.json') -Raw | ConvertFrom-Json
+foreach ($field in $metadata.Keys) {
+    if ($recorded.$field -ne $metadata[$field]) {
+        throw "Desktop profile mismatch for $field`: expected $($recorded.$field), got $($metadata[$field])."
     }
 }
 
@@ -238,11 +222,7 @@ function Save-Checkpoint(
             if ($TraceGeometry) {
                 Add-Content -LiteralPath (Join-Path $artifactPath 'geometry.txt') -Value "$Name`: $geometry"
             }
-            if ($ObserveOnly) {
-                return $signature
-            } elseif ($Record) {
-                [IO.File]::Copy($candidate, $expected)
-            } else {
+            if (!$ObserveOnly) {
                 [RpnDisplayFixture]::AssertEqual($expected, $candidate, (Join-Path $artifactPath "$Name.diff.png"))
             }
             return $signature
@@ -285,11 +265,9 @@ function Assert-ErrorFlash([IntPtr] $Window, [int] $Display) {
 }
 
 function Assert-Placement([IntPtr] $Window, [int] $Display, [Drawing.Rectangle] $Before) {
-    if (!$LegacyPlacement) {
-        $after = [RpnDesktop]::Geometry($Window, $Display)[0]
-        if ($after.Location -ne $Before.Location) {
-            throw "Window moved from $($Before.Location) to $($after.Location)."
-        }
+    $after = [RpnDesktop]::Geometry($Window, $Display)[0]
+    if ($after.Location -ne $Before.Location) {
+        throw "Window moved from $($Before.Location) to $($after.Location)."
     }
 }
 
@@ -311,7 +289,6 @@ function Assert-SavedState([switch] $AfterModeSwitch, [int] $ExpectedMode = 2) {
             $position = "saved window position: ($($state.GetValue('WindowX')), $($state.GetValue('WindowY')))"
             Add-Content -LiteralPath (Join-Path $artifactPath 'geometry.txt') -Value $position
         }
-        $expectedDisplayMode = if ($LegacyPlacement) { 1 } else { 0 }
         $fields = @{
             Radix = 10
             WordSize = 8
@@ -321,7 +298,7 @@ function Assert-SavedState([switch] $AfterModeSwitch, [int] $ExpectedMode = 2) {
             KeypadHidden = 1
             FloatAngleType = 2
             SignificantDigits = 10
-            FloatDisplayMode = $expectedDisplayMode
+            FloatDisplayMode = 0
         }
         foreach ($name in $fields.Keys) {
             if ($state.GetValueKind($name) -ne 'DWord' -or $state.GetValue($name) -ne $fields[$name]) {
@@ -359,7 +336,7 @@ function Assert-SavedState([switch] $AfterModeSwitch, [int] $ExpectedMode = 2) {
 
 $integerDisplay = 257
 $floatDisplay = 261
-$checkpointCount = if ($LegacyPlacement) { 11 } else { 12 }
+$checkpointCount = 12
 $process = $null
 $expectingEscape = $false
 [RpnDesktop]::RegisterEscape()
@@ -459,16 +436,14 @@ try {
     $process.Dispose()
     $process = $null
 
-    if (!$LegacyPlacement) {
-        # A previous save can contain a mode with no formatter. The next
-        # launch must still draw the same float rows and save Auto on exit.
-        $state = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($registryPath, $true)
-        if ($null -eq $state) { throw 'Cannot open the saved test state to set a display override.' }
-        try {
-            $state.SetValue('FloatDisplayMode', 2, [Microsoft.Win32.RegistryValueKind]::DWord)
-        } finally {
-            $state.Dispose()
-        }
+    # A previous save can contain a mode with no formatter. The next
+    # launch must still draw the same float rows and save Auto on exit.
+    $state = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($registryPath, $true)
+    if ($null -eq $state) { throw 'Cannot open the saved test state to set a display override.' }
+    try {
+        $state.SetValue('FloatDisplayMode', 2, [Microsoft.Win32.RegistryValueKind]::DWord)
+    } finally {
+        $state.Dispose()
     }
 
     Write-Checkpoint 10 'relaunch and verify both calculator modes'
@@ -486,14 +461,14 @@ try {
         } while ($clock.ElapsedMilliseconds -lt 5000)
         throw 'Sending Esc did not stop the desktop pass.'
     }
-    $null = Save-Checkpoint $floatDialog $floatDisplay 'float-restarted' -ObserveOnly:(!$LegacyPlacement)
-    if (!$LegacyPlacement) { Assert-UnchangedRows $beforeRestart 'float-restarted' }
+    $null = Save-Checkpoint $floatDialog $floatDisplay 'float-restarted' -ObserveOnly
+    Assert-UnchangedRows $beforeRestart 'float-restarted'
     Invoke-Menu $floatDialog 'B' 'D'
     $dialog = Wait-Dialog $process 'Rpn'
     $null = Wait-Keypad $dialog $integerDisplay $false
     Assert-Placement $dialog $integerDisplay $floatBounds
-    $null = Save-Checkpoint $dialog $integerDisplay 'decimal-restarted' -ObserveOnly:(!$LegacyPlacement)
-    if (!$LegacyPlacement -and !$VerifyPlacement) { Assert-UnchangedRows 'decimal-collapsed' 'decimal-restarted' }
+    $null = Save-Checkpoint $dialog $integerDisplay 'decimal-restarted' -ObserveOnly
+    Assert-UnchangedRows 'decimal-collapsed' 'decimal-restarted'
     Write-Checkpoint 11 'check Left, Backspace, Delete, and mode switches during entry'
     # Shorten integer X to 2. Starting float entry then switching back leaves
     # entry active, so typing 3 appends to integer X rather than lifting it.
@@ -511,24 +486,21 @@ try {
     Send-RpnKeys $floatDialog @(0x0D, 0x2E, 0x34, 0x0D)
     Close-Rpn $process $floatDialog
     Assert-SavedState -AfterModeSwitch
-    if (!$LegacyPlacement) {
-        Write-Checkpoint 12 'recover bad saved mode and precision without discarding the stacks'
-        $process.Dispose()
-        $process = $null
-        $state = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($registryPath, $true)
-        if ($null -eq $state) { throw 'Cannot open the saved test state for the recovery check.' }
-        try {
-            $state.SetValue('CalcMode', 99, [Microsoft.Win32.RegistryValueKind]::DWord)
-            $state.SetValue('SignificantDigits', 4, [Microsoft.Win32.RegistryValueKind]::DWord)
-        } finally {
-            $state.Dispose()
-        }
-        $process = Start-Process -FilePath $Executable -PassThru
-        $dialog = Wait-Dialog $process 'Rpn'
-        $null = Wait-Keypad $dialog $integerDisplay $false
-        Close-Rpn $process $dialog
-        Assert-SavedState -AfterModeSwitch -ExpectedMode 1
+    Write-Checkpoint 12 'recover a bad saved calculator mode without discarding the stacks'
+    $process.Dispose()
+    $process = $null
+    $state = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($registryPath, $true)
+    if ($null -eq $state) { throw 'Cannot open the saved test state for the recovery check.' }
+    try {
+        $state.SetValue('CalcMode', 99, [Microsoft.Win32.RegistryValueKind]::DWord)
+    } finally {
+        $state.Dispose()
     }
+    $process = Start-Process -FilePath $Executable -PassThru
+    $dialog = Wait-Dialog $process 'Rpn'
+    $null = Wait-Keypad $dialog $integerDisplay $false
+    Close-Rpn $process $dialog
+    Assert-SavedState -AfterModeSwitch -ExpectedMode 1
 } catch {
     if (!$expectingEscape -or $_.Exception.GetBaseException() -isnot [OperationCanceledException]) {
         throw
@@ -557,10 +529,5 @@ try {
 if ($VerifyEscape) {
     Write-Output 'Esc stopped the desktop pass; the test process and key were cleaned up.'
     return
-}
-if ($Record) {
-    $metadata.ExecutableSha256 = (Get-FileHash -LiteralPath $Executable).Hash
-    $metadata | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $fixturePath 'profile.json')
-    Write-Output "Review the newly recorded fixture candidates in $fixturePath before using them."
 }
 Write-Output "RPN desktop checks passed. Artifacts: $artifactPath"

@@ -66,7 +66,7 @@ overrides. The desktop suite verifies the same routines through close and
 relaunch. Do not substitute screenshots for numeric assertions or count
 tests of unsupported modes as coverage of working features.
 
-## Capturing the legacy desktop baseline
+## Run the desktop checks
 
 An ordinary interactive Windows session is sufficient; no admin rights,
 test account, VM, or display changes are required. The runner temporarily
@@ -77,11 +77,11 @@ prevents further input to it. Do not start a run while anyone needs that
 desktop.
 
 Use Windows PowerShell 5.1 with MSBuild (the same toolchain as the console
-checks). For legacy fixtures, pass a checkout of the pinned reference:
+checks). Pass the reviewed fixtures and a new artifact directory:
 
 ```powershell
-.\tests\Run-DesktopTests.ps1 -SourceDirectory C:\rpn-reference -ConfirmDesktopInput -LegacyPlacement `
-    -FixtureDirectory .\legacy-fixtures -ArtifactDirectory .\legacy-run -Record
+.\tests\Run-DesktopTests.ps1 -ConfirmDesktopInput `
+    -FixtureDirectory .\tests\fixtures\legacy-desktop -ArtifactDirectory .\desktop-run
 ```
 
 The runner builds a fresh x64 Release executable in the artifact directory.
@@ -94,33 +94,26 @@ sources and build outputs remain available for inspection.
 
 The runner uses real menu, keypad, and keyboard input against this executable.
 It checks collapsed-window geometry, verifies saved register values, and
-compares both stacks' displays before and after restart. `-Record` writes to
-a new directory, never replacing existing fixtures. An interrupted or
-failed capture does not produce `profile.json` and cannot be replayed.
-Review every crop for what the scenario is meant to show, including visible row count,
-register ordering, radix, float entry text, and numeric result. Record the
-reference revision, build configuration, font, and theme alongside the
-captured Windows build, DPI, resolution, and executable hash.
+compares both stacks' displays before and after restart. The runner
+never records or overwrites expected images. A pixel mismatch leaves the
+fixture untouched and writes actual and diff PNGs.
 
 The checked-in baseline is `tests\fixtures\legacy-desktop`: x64 Release
 from the pinned revision, Windows build 26300.10075, 3840×2160 at 144 DPI,
 with the app's `SYSTEM_FIXED_FONT` and ordinary Windows desktop rendering.
-The runner disables rounded shell corners only on its own dialog. Use
-`-LegacyPlacement` with the pinned source to replay every checkpoint
-pixel-for-pixel, including the original restart drift. The default
-candidate checks match the unchanged screen fixtures up to restart,
-then verify the actual window position and compare the five displayed
-rows without any pixel translation. Use `-TraceGeometry` to log the
-outer window, client and crop bounds, DPI, and saved position in the
-run's `geometry.txt`.
+Use the same display settings for exact pixel comparison. The runner
+disables rounded shell corners only on its own dialog. It compares nine
+unchanged checkpoints against the frozen images, then checks the window
+position and compares the five glyph rows to the pre-restart captures
+without pixel translation. The two historical `*-restarted.png` files show
+the old drift and are not used in current comparisons.
 
-To compare a candidate, omit `-Record`, use the candidate source directory
-(the current checkout by default), and pass the reviewed fixtures and a
-new artifact directory. Use the same display settings as the recorded run.
-A crop mismatch leaves the expected fixture untouched and writes actual/diff
-PNGs. Add `-VerifyPlacement` to move the window to a nonzero origin and
-exercise both mode switches and restart from there. The build, pixel
-comparator, and cancellation notification can be
+Add `-VerifyPlacement` to move the window to a positive nonzero origin and
+exercise both mode switches and restart from there. Negative coordinate
+encoding is checked in the registry tests, not by moving a window to a
+secondary monitor. Use `-TraceGeometry` to log the outer window, client
+and crop bounds, DPI, and saved position in the run's `geometry.txt`.
+The build, pixel comparator, and cancellation notification can be
 checked without any app launch, desktop input, or registry access:
 
 ```powershell
@@ -128,15 +121,17 @@ checked without any app launch, desktop input, or registry access:
 .\tests\Run-DesktopTests.ps1 -SelfTest -ArtifactDirectory .\fixture-self-test
 ```
 
-Each milestone must pass its affected tests before and after the change.
-Use peer review before the first extraction, before and after recomposition,
-and before retiring the legacy comparison. Record decisions and known gaps
-in these docs. The peer review confirmed the expected calculations and the
-registry redirection. A live negative replay failed at the wrong fixture and
+The final baseline passed peer review before retiring the legacy branch.
+A live negative replay failed at the wrong fixture and
 produced a diff. A separate `-VerifyEscape` pass sent Esc through the Windows
 input path after relaunch and verified test process and key cleanup. Typing
 during a run can interfere with the test; stop with Esc and restart the run
 rather than accepting a new fixture.
+
+Final acceptance passed in Debug and Release x64 for the console suite.
+The installed-profile desktop suite passed all twelve checkpoints with
+default placement and with `-VerifyPlacement`. It requires an active
+desktop with the recorded settings; it is not an unattended CI check.
 
 The hex and float entry checkpoints wait for observable paint around
 keyboard/mouse handoffs. `SendInput` confirms enqueueing, not that the
@@ -148,8 +143,11 @@ and geometry changes do not break entry. With those checks, three
 consecutive candidate and three pinned legacy replays passed without
 relaxing any image fixture.
 
-Retire the temporary old-vs-new execution only when permanent tests cover
-its observations. Keep the standalone tests and reviewed fixtures.
+Git tag `test-baseline-legacy-bridge` preserves the old runner, including
+`-LegacyPlacement` and `-Record`, and the instructions for using it with
+the pinned source. See the [fixture provenance](../tests/fixtures/legacy-desktop/README.md)
+and SHA-256 manifest. The current runner does not need the pinned source
+or a nested checkout.
 
 ## Follow-up: black-box arithmetic boundary matrices
 
