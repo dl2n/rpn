@@ -31,46 +31,20 @@
 #define FLOAT_BUG	TRUE
 
 extern INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
-void FCalcIt(PFSTACK pStack, DWORD dwOperation, HWND hwnd);
+static void FCalcIt(DWORD dwOperation, HWND hwnd);
 BOOL FHelpKeys( DWORD dwOperation, HANDLE hInst, HWND hwnd ,
                 UCHAR* szStringBuffer, DWORD cbStringBuffer );
 extern void DebugPrintf(const char * format, ...);
-int IsFloatChar(UCHAR ch);
-void FEnterOp(PFSTACK pFStack, PUCHAR pEntryString);
-BOOL FNumTest(PUCHAR pEntryString, UCHAR Char);
-char * FToA(FNUMBER FX, char * psString, ULONG Length, USHORT SignificantDigits,
-			USHORT usFloatDisplayMode, BOOLEAN Adorn);
+static int IsFloatChar(UCHAR ch);
+static void FEnterOp(FLOAT_STATE *state, BOOL *entering);
+static BOOL FNumTest(PUCHAR pEntryString, UCHAR Char);
 extern void ErrorBox(const char * format, ...);
-extern DWORD CreateCalc(USHORT CalcMode);
-extern BOOL IsBaseDigit(UCHAR ch, USHORT Radix);
 BOOL FClipboardCopy(FNUMBER fNumber, USHORT usSignificantDigits,
 					USHORT usFloatDisplayMode);
 BOOL FClipboardPaste(FNUMBER * pfNumber);
 BOOL FStrNumTest(PUCHAR lpNumStr, FNUMBER * pfNumber);
 BOOL StrClipboardCopy(PUCHAR pString);
 BOOL StrClipboardPaste(PUCHAR pString);
-
-FSTACK FStack = {0.0, 0.0, 0.0, 0.0};	// global floating point stack
-UCHAR pEntryString[DISPLAY_WIDTH + 1] = "";
-USHORT usSignificantDigits = 10;
-USHORT usFloatDisplayMode = FLOAT_DISPLAY_FIX;
-USHORT usFloatAngleType = FLOAT_ANGLE_DEG;
-extern BOOL fEnter;
-extern BOOL fHelpKeysMode;	   // Help keys mode
-extern HWND hDisplay;				   // handle to display window
-extern HWND hwndDialog;
-extern DWORD cyChar;
-extern HANDLE hInst;
-BOOL fInverse = FALSE;
-// extern BOOL fDontQuit;
-extern BOOL bQuit;
-extern USHORT usCalcMode;
-extern DWORD dwWindowX;
-extern DWORD dwWindowY;
-extern BOOL fFirstTime;
-extern BOOL bFirstMove;
-extern DWORD MenuY;
-extern DWORD CaptionY;
 
 
 void FWmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
@@ -87,38 +61,8 @@ void FWmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         }
 
     }
-	else 
-    {		// not in HelpKeysMode
-				/*
-				* Check for digit keys:
-		*/
-		
-		// valid float digit (or .) ?
-		if (IsFloatChar((UCHAR)wParam)) {
-			
-			if (! fEnter) { // fEnter is entry mode flag
-				// If we aren't in entry mode, get us into entry mode.
-				// Move the contents of the stack up one level so that
-				// there is room in X for a new number.
-				FEnterOp(&FStack, pEntryString);
-				pEntryString[0] = '\0';
-				fEnter = TRUE;
-			}
-			
-			DebugPrintf("char: %c\n", (UCHAR)wParam);
-			
-			if (FNumTest(pEntryString, (UCHAR)wParam)) {
-				RedrawDisplay(hDisplay);
-			}
-			else {
-				DebugPrintf("Couldn't add character to entry string.\n");
-			}
-		}
-		
-		else {	// operation pressed.
-			FCalcIt(&FStack, (DWORD)wParam, hwnd);
-		}
-	}
+	else
+		FCalcIt((DWORD)wParam, hwnd);
 }
 
 void FWmNotifyProc( HWND hwnd, int idCtrl, LPNMHDR pnmh )
@@ -152,71 +96,6 @@ void FWmNotifyProc( HWND hwnd, int idCtrl, LPNMHDR pnmh )
 
 #endif
 }
-
-void FPaintStackDisplay(HWND hwnd, HDC hdc, PFSTACK pFStack,
-						UCHAR * pEntryString) {
-	
-	char psString[DISPLAY_WIDTH + 1];  // 64 bits + 1 for null
-	char *psFloatAngleType;
-	RECT rect;
-	
-	
-	SelectObject(hdc, GetStockObject(BLACK_PEN));
-	SelectObject(hdc, GetStockObject(BLACK_BRUSH));
-	GetClientRect(hwnd, &rect);
-	Rectangle(hdc, 0, 0, rect.right, rect.bottom);
-	
-	SelectObject(hdc, GetStockObject(SYSTEM_FIXED_FONT));	// fixed font
-	SetBkColor(hdc, RGB(0, 0, 0));					 // Black background color
-	
-	SetTextColor(hdc, RGB(0, 255, 0));				 // Green text color
-
-	switch(usFloatAngleType) {
-	case FLOAT_ANGLE_RAD:
-		psFloatAngleType = "Rad";
-		break;
-	case FLOAT_ANGLE_GRAD:
-		psFloatAngleType = "Grad";
-		break;
-	default:
-		psFloatAngleType = "Degree";
-		break;
-	}
-
-	sprintf_s(psString, sizeof(psString), "%c         %6s      %s",
-			(ErrorFlag? '!':' '),
-		    psFloatAngleType,
-			fInverse ? "Inverse" : "");
-	TextOut(hdc, 1, 1, psString, (int)strlen(psString));
-
-    //
-	//  Queue timer to clear the error flag.
-	//
-
-    if (ErrorFlag) {
-		SetTimer(hwnd, IDD_CLEAR_ERROR, 300, ClearErrorTimer);
-	}
-
-	
-	SetTextColor(hdc, RGB(255, 0, 0));				 // Red text color
-	
-	FToA(pFStack->T, psString, sizeof(psString), usSignificantDigits, usFloatDisplayMode, TRUE);
-	TextOut(hdc, 1, 1 + (int)cyChar, psString, (int)strlen(psString));
-	
-	FToA(pFStack->Z, psString, sizeof(psString), usSignificantDigits, usFloatDisplayMode, TRUE);
-	TextOut(hdc, 1, 1 + 2 * (int)cyChar, psString, (int)strlen(psString));
-	
-	FToA(pFStack->Y, psString, sizeof(psString), usSignificantDigits, usFloatDisplayMode, TRUE);
-	TextOut(hdc, 1, 1 + 3 * (int)cyChar, psString, (int)strlen(psString));
-	
-	if (fEnter)
-		strcpy_s(psString, sizeof(psString), pEntryString);
-	else
-		FToA(pFStack->X, psString, sizeof(psString), usSignificantDigits, usFloatDisplayMode, TRUE);
-	TextOut(hdc, 1, 1 + 4 * (int)cyChar, psString, (int)strlen(psString));
-}
-
-
 
 char * FToA(FNUMBER FX, char * psString, ULONG Length, USHORT SignificantDigits, USHORT usFloatDisplayMode, BOOLEAN Adorn) {
 	
@@ -316,7 +195,7 @@ char * FToA(FNUMBER FX, char * psString, ULONG Length, USHORT SignificantDigits,
 *			 as operations.  Check for digits or '.'.
 */
 
-int IsFloatChar(UCHAR ch)
+static int IsFloatChar(UCHAR ch)
 {
 	if (isdigit(ch))
 		return(TRUE);
@@ -327,130 +206,33 @@ int IsFloatChar(UCHAR ch)
 }
 
 
-/*** FDropY -- Drops Y from the FStack, copying Z and T down.
-*
-* ENTRY    - pFStack
-* EXIT	   - none.
-* SYNOPSIS - Moves Z over Y and T over Z.  Keeps the contents of T.
-* WARNINGS -
-* EFFECTS  -
-*
-*/
-
-void FDropY(PFSTACK pFStack)
+// While editing, change the exponent sign if present, otherwise the mantissa.
+static BOOL FNegOp(FLOAT_STATE *state, BOOL entering)
 {
-	pFStack->Y = pFStack->Z;
-	pFStack->Z = pFStack->T;
-}
-
-
-/*** FRollDownOp -- Roll the FStack down one
-*
-* ENTRY    - pFStack
-* EXIT	   - none
-* SYNOPSIS - Rolls the contents of the FStack down one level; ie, X -> T,
-*			 Y -> X, etc.
-*
-*/
-
-void FRollDownOp(PFSTACK pFStack)
-{
-	FNUMBER Temp;
-	
-	
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
-	
-	Temp = pFStack->X;
-	pFStack->X = pFStack->Y;
-	pFStack->Y = pFStack->Z;
-	pFStack->Z = pFStack->T;
-	pFStack->T = Temp;
-}
-
-
-/*** FSwapOp -- Swap X and Y
-*
-* ENTRY    - pFStack
-* EXIT	   - none
-* SYNOPSIS - Swaps the contents of X and Y.
-*
-*/
-
-void FSwapOp(PFSTACK pFStack)
-{
-	FNUMBER Temp;
-	
-	
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
-	
-	Temp = pFStack->X;
-	pFStack->X = pFStack->Y;
-	pFStack->Y = Temp;
-}
-
-
-/*** FNegOp -- X --> -X
-*
-* ENTRY    - pFStack
-*			 pEntryString
-*			 fEnter
-* EXIT	   - none
-* SYNOPSIS - Subtract X from 0.  Doesn't drop the stack and doesn't affect
-*			 the entry flag.
-*
-*/
-
-void FNegOp(PFSTACK pFStack, PUCHAR pEntryString, BOOL fEnter)
-{
-	PUCHAR pTemp;
-	size_t Length;
-	
-	
-	if (fEnter) {
-		// If we have an exponent, we should change the sign of that
-		if (pTemp = strchr(pEntryString, 'E')) {
-			pEntryString = pTemp + 1;
+	if (entering) {
+		char *entry = (char *)state->Entry;
+		char *exponent = strchr(entry, 'E');
+		char *suffix = exponent ? exponent + 1 : entry;
+		size_t bytesWithTerminator = strlen(suffix) + 1;
+		if (*suffix == '-') {
+			memmove(suffix, suffix + 1, bytesWithTerminator - 1);
+		} else {
+			// A full clipboard entry has no room to move its terminator right.
+			if (strlen(entry) >= DISPLAY_WIDTH)
+				return FALSE;
+			memmove(suffix + 1, suffix, bytesWithTerminator);
+			*suffix = '-';
 		}
-		
-		// change the sign
-		if (Length = strlen(pEntryString)) {
-			if (*pEntryString == '-') { // sign already negative, remove it
-				while (*pEntryString != '\0') {
-					*pEntryString = *(pEntryString + 1);
-					pEntryString++;
-				}
-			}
-			else {						// sign positive, add a '-' char
-				pTemp = pEntryString + Length;
-				while (pTemp >= pEntryString) {
-					*(pTemp + 1) = *pTemp;
-					pTemp--;
-				}
-				*pEntryString = '-';
-			}
-		}
-		else {	// empty string, give us a negative anyway
-			*pEntryString = '-';
-			*(pEntryString+1) = '\0';
-		}
+	} else {
+		state->Stack.X = -state->Stack.X;
 	}
-	
-	else
-		pFStack->X = -(pFStack->X);
+	return TRUE;
 }
 
 
-/*
-* FEExOp
-*
-* INPUTS:  pEntryString
-* OUTPUTS:
-* SUMARY:
-*
-*/
-void FEExOp(PUCHAR pEntryString, BOOL fEnter) {
+// EEx toggles the exponent portion of an active entry. An empty
+// mantissa starts at 1 so the user can enter a power of ten directly.
+static BOOL FEExOp(PUCHAR pEntryString, BOOL fEnter) {
 	PUCHAR pTemp;
 	size_t Length;
 	
@@ -460,7 +242,10 @@ void FEExOp(PUCHAR pEntryString, BOOL fEnter) {
 			*pTemp = '\0';
 		}
 		else { // Add an 'E' to the end of the string.
-			if (! (Length = strlen(pEntryString))) {
+			Length = strlen(pEntryString);
+			if (Length >= DISPLAY_WIDTH)
+				return FALSE;
+			if (!Length) {
 				// if there is no mantissa, provide a 1
 				pEntryString[Length++] = '1';
 			}
@@ -469,6 +254,7 @@ void FEExOp(PUCHAR pEntryString, BOOL fEnter) {
 			pEntryString[Length] = '\0';
 		}
 	}
+	return TRUE;
 }
 
 
@@ -480,17 +266,14 @@ void FEExOp(PUCHAR pEntryString, BOOL fEnter) {
 *
 */
 
-void FDivideOp(PFSTACK pFStack)
+static void FDivideOp(PFSTACK pFStack, CALCULATOR_REPORT_ERROR reportError, void *context)
 {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
-	
 	if (pFStack->X != 0.0) {
 		pFStack->X = pFStack->Y / pFStack->X;
-		FDropY(pFStack);
+		DropFloatY(pFStack);
 	}
 	else
-		ErrorBox("Division by zero");
+		reportError(context, "Division by zero");
 }
 
 
@@ -498,20 +281,17 @@ void FDivideOp(PFSTACK pFStack)
 *
 * ENTRY    - pFStack
 * EXIT	   - none
-* SYNOPSIS - Divide 1 by X into X.	 Move stack down, clear fEnter.
+* SYNOPSIS - Replace X with its reciprocal without dropping Y.
 *
 */
 
-void FOneOverOp(PFSTACK pFStack)
+static void FOneOverOp(PFSTACK pFStack, CALCULATOR_REPORT_ERROR reportError, void *context)
 {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
-	
 	if (pFStack->X != 0.0) {
 		pFStack->X = 1.0 / pFStack->X;
 	}
 	else
-		ErrorBox("Division by zero");
+		reportError(context, "Division by zero");
 }
 
 
@@ -519,17 +299,14 @@ void FOneOverOp(PFSTACK pFStack)
 *
 * ENTRY    - pFStack
 * EXIT	   -
-* SYNOPSIS - Add Y to X, move stack down, set fEnter to FALSE
+* SYNOPSIS - Add Y to X and drop Y.
 *
 */
 
-void FAddOp(PFSTACK pFStack)
+static void FAddOp(PFSTACK pFStack)
 {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
-	
 	pFStack->X += pFStack->Y;
-	FDropY(pFStack);
+	DropFloatY(pFStack);
 }
 
 
@@ -537,19 +314,16 @@ void FAddOp(PFSTACK pFStack)
 *
 * ENTRY    - pFStack
 * EXIT	   - none
-* SYNOPSIS - Subtract X from Y, move stack down, set fEnter to FALSE.
+* SYNOPSIS - Subtract X from Y and drop Y.
 * WARNINGS -
 * EFFECTS  -
 *
 */
 
-void FSubtractOp(PFSTACK pFStack)
+static void FSubtractOp(PFSTACK pFStack)
 {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
-	
 	pFStack->X = pFStack->Y - pFStack->X;
-	FDropY(pFStack);
+	DropFloatY(pFStack);
 }
 
 
@@ -557,15 +331,12 @@ void FSubtractOp(PFSTACK pFStack)
 *
 * ENTRY    - pFStack
 * EXIT	   -
-* SYNOPSIS - Add 1 to X, set fEnter to FALSE
+* SYNOPSIS - Add 1 to X.
 *
 */
 
-void FUnaryAddOp(PFSTACK pFStack)
+static void FUnaryAddOp(PFSTACK pFStack)
 {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
-	
 	pFStack->X += 1.0;
 }
 
@@ -574,17 +345,14 @@ void FUnaryAddOp(PFSTACK pFStack)
 *
 * ENTRY    - pFStack
 * EXIT	   - none
-* SYNOPSIS - Subtract 1 from X, set fEnter to FALSE
+* SYNOPSIS - Subtract 1 from X.
 * WARNINGS -
 * EFFECTS  -
 *
 */
 
-void FUnarySubtractOp(PFSTACK pFStack)
+static void FUnarySubtractOp(PFSTACK pFStack)
 {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
-	
 	pFStack->X -= 1.0;
 }
 
@@ -597,13 +365,10 @@ void FUnarySubtractOp(PFSTACK pFStack)
 *
 */
 
-void FMultiplyOp(PFSTACK pFStack)
+static void FMultiplyOp(PFSTACK pFStack)
 {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
-	
 	pFStack->X *= pFStack->Y;
-	FDropY(pFStack);
+	DropFloatY(pFStack);
 }
 
 
@@ -611,7 +376,7 @@ void FMultiplyOp(PFSTACK pFStack)
 * INPUTS	pFStack
 *			usFloatAngleType
 */
-void ConvertXToRadians(PFSTACK pFStack, USHORT usFloatAngleType) {
+static void ConvertXToRadians(PFSTACK pFStack, USHORT usFloatAngleType) {
 	switch (usFloatAngleType) {
 	case FLOAT_ANGLE_DEG:
 		pFStack->X = pFStack->X * RAD_PER_DEG;
@@ -637,7 +402,7 @@ void ConvertXToRadians(PFSTACK pFStack, USHORT usFloatAngleType) {
 * INPUTS	pFStack
 *			usFloatAngleType
 */
-void ConvertXFromRadians(PFSTACK pFStack, USHORT usFloatAngleType) {
+static void ConvertXFromRadians(PFSTACK pFStack, USHORT usFloatAngleType) {
 	switch (usFloatAngleType) {
 	case FLOAT_ANGLE_DEG:
 		pFStack->X = pFStack->X * DEG_PER_RAD;
@@ -665,16 +430,13 @@ void ConvertXFromRadians(PFSTACK pFStack, USHORT usFloatAngleType) {
 * INPUTS   pFStack
 *
 */
-void FArcSinOp(PFSTACK pFStack) {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
-	
+static void FArcSinOp(PFSTACK pFStack, USHORT angleType, CALCULATOR_REPORT_ERROR reportError, void *context) {
 	if (pFStack->X < -1.0 || pFStack->X > 1.0) {
-		ErrorBox("arc sin domain is [-1.0..1.0]");
+		reportError(context, "arc sin domain is [-1.0..1.0]");
 	}
 	else {
 		pFStack->X = asin(pFStack->X);
-		ConvertXFromRadians(pFStack, usFloatAngleType);
+		ConvertXFromRadians(pFStack, angleType);
 	}
 }
 
@@ -684,16 +446,13 @@ void FArcSinOp(PFSTACK pFStack) {
 * INPUTS   pFStack
 *
 */
-void FArcCosOp(PFSTACK pFStack) {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
-	
+static void FArcCosOp(PFSTACK pFStack, USHORT angleType, CALCULATOR_REPORT_ERROR reportError, void *context) {
 	if (pFStack->X < -1.0 || pFStack->X > 1.0) {
-		ErrorBox("arc cos domain is [-1.0..1.0]");
+		reportError(context, "arc cos domain is [-1.0..1.0]");
 	}
 	else {
 		pFStack->X = acos(pFStack->X);
-		ConvertXFromRadians(pFStack, usFloatAngleType);
+		ConvertXFromRadians(pFStack, angleType);
 	}
 }
 
@@ -703,12 +462,9 @@ void FArcCosOp(PFSTACK pFStack) {
 * INPUTS   pFStack
 *
 */
-void FArcTanOp(PFSTACK pFStack) {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
-	
+static void FArcTanOp(PFSTACK pFStack, USHORT angleType) {
 	pFStack->X = atan(pFStack->X);
-	ConvertXFromRadians(pFStack, usFloatAngleType);
+	ConvertXFromRadians(pFStack, angleType);
 }
 
 
@@ -717,16 +473,14 @@ void FArcTanOp(PFSTACK pFStack) {
 * INPUTS   pFStack
 *
 */
-void FSinOp(PFSTACK pFStack) {
-	if (fInverse) {
-		FArcSinOp(pFStack);
-		fInverse = FALSE;
+static void FSinOp(FLOAT_STATE *state, CALCULATOR_REPORT_ERROR reportError, void *context) {
+	PFSTACK pFStack = &state->Stack;
+	if (state->Inverse) {
+		FArcSinOp(pFStack, state->AngleType, reportError, context);
+		state->Inverse = FALSE;
 	}
 	else {
-		if (fEnter)
-			FEnterOp(pFStack, pEntryString);
-		
-		ConvertXToRadians(pFStack, usFloatAngleType);
+		ConvertXToRadians(pFStack, state->AngleType);
 		
 		pFStack->X = sin(pFStack->X);
 	}
@@ -738,16 +492,14 @@ void FSinOp(PFSTACK pFStack) {
 * INPUTS   pFStack
 *
 */
-void FCosOp(PFSTACK pFStack) {
-	if (fInverse) {
-		FArcCosOp(pFStack);
-		fInverse = FALSE;
+static void FCosOp(FLOAT_STATE *state, CALCULATOR_REPORT_ERROR reportError, void *context) {
+	PFSTACK pFStack = &state->Stack;
+	if (state->Inverse) {
+		FArcCosOp(pFStack, state->AngleType, reportError, context);
+		state->Inverse = FALSE;
 	}
 	else {
-		if (fEnter)
-			FEnterOp(pFStack, pEntryString);
-		
-		ConvertXToRadians(pFStack, usFloatAngleType);
+		ConvertXToRadians(pFStack, state->AngleType);
 		
 		pFStack->X = cos(pFStack->X);
 	}
@@ -759,16 +511,14 @@ void FCosOp(PFSTACK pFStack) {
 * INPUTS   pFStack
 *
 */
-void FTanOp(PFSTACK pFStack) {
-	if (fInverse) {
-		FArcTanOp(pFStack);
-		fInverse = FALSE;
+static void FTanOp(FLOAT_STATE *state) {
+	PFSTACK pFStack = &state->Stack;
+	if (state->Inverse) {
+		FArcTanOp(pFStack, state->AngleType);
+		state->Inverse = FALSE;
 	}
 	else {
-		if (fEnter)
-			FEnterOp(pFStack, pEntryString);
-		
-		ConvertXToRadians(pFStack, usFloatAngleType);
+		ConvertXToRadians(pFStack, state->AngleType);
 		
 		pFStack->X = tan(pFStack->X);
 	}
@@ -780,9 +530,7 @@ void FTanOp(PFSTACK pFStack) {
 * INPUTS   pFStack
 *
 */
-void FExp10Op(PFSTACK pFStack) {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
+static void FExp10Op(PFSTACK pFStack) {
 	pFStack->X = pow(10, pFStack->X);
 }
 
@@ -793,9 +541,7 @@ void FExp10Op(PFSTACK pFStack) {
 * SUMMARY  e^x
 *
 */
-void FExpOp(PFSTACK pFStack) {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
+static void FExpOp(PFSTACK pFStack) {
 	pFStack->X = exp(pFStack->X);
 }
 
@@ -805,17 +551,15 @@ void FExpOp(PFSTACK pFStack) {
 * INPUTS   pFStack
 *
 */
-void FLogOp(PFSTACK pFStack) {
-	if (fInverse) {
+static void FLogOp(FLOAT_STATE *state, CALCULATOR_REPORT_ERROR reportError, void *context) {
+	PFSTACK pFStack = &state->Stack;
+	if (state->Inverse) {
 		FExp10Op(pFStack);
-		fInverse = FALSE;
+		state->Inverse = FALSE;
 	}
 	else {
-		if (fEnter)
-			FEnterOp(pFStack, pEntryString);
-		
 		if (pFStack->X < 0.0)
-			ErrorBox("Log(negative number) is undefined");
+			reportError(context, "Log(negative number) is undefined");
 		else
 			pFStack->X = log10(pFStack->X);
 	}
@@ -827,17 +571,15 @@ void FLogOp(PFSTACK pFStack) {
 * INPUTS   pFStack
 *
 */
-void FLnOp(PFSTACK pFStack) {
-	if (fInverse) {
+static void FLnOp(FLOAT_STATE *state, CALCULATOR_REPORT_ERROR reportError, void *context) {
+	PFSTACK pFStack = &state->Stack;
+	if (state->Inverse) {
 		FExpOp(pFStack);
-		fInverse = FALSE;
+		state->Inverse = FALSE;
 	}
 	else {
-		if (fEnter)
-			FEnterOp(pFStack, pEntryString);
-		
 		if (pFStack->X < 0.0)
-			ErrorBox("Ln(negative number) is undefined");
+			reportError(context, "Ln(negative number) is undefined");
 		else
 			pFStack->X = log(pFStack->X);
 	}
@@ -850,9 +592,7 @@ void FLnOp(PFSTACK pFStack) {
 * SUMMARY  x*x
 *
 */
-void FSquareOp(PFSTACK pFStack) {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
+static void FSquareOp(PFSTACK pFStack) {
 	pFStack->X = pFStack->X * pFStack->X;
 }
 
@@ -862,19 +602,17 @@ void FSquareOp(PFSTACK pFStack) {
 * INPUTS   pFStack
 *
 */
-void FSqrtOp(PFSTACK pFStack) {
-	if (fInverse) {
+static void FSqrtOp(FLOAT_STATE *state, CALCULATOR_REPORT_ERROR reportError, void *context) {
+	PFSTACK pFStack = &state->Stack;
+	if (state->Inverse) {
 		FSquareOp(pFStack);
-		fInverse = FALSE;
+		state->Inverse = FALSE;
 	}
 	else {
-		if (fEnter)
-			FEnterOp(pFStack, pEntryString);
-		
 		if (pFStack->X >= 0.)
 			pFStack->X = sqrt(pFStack->X);
 		else
-			ErrorBox("Cannot give Square Root of negative number.");
+			reportError(context, "Cannot give Square Root of negative number.");
 	}
 }
 
@@ -884,24 +622,22 @@ void FSqrtOp(PFSTACK pFStack) {
 * INPUTS   pFStack
 *
 */
-void FYToXOp(PFSTACK pFStack) {
-	if (fEnter)
-		FEnterOp(pFStack, pEntryString);
-	
-	if (fInverse) { 				// Compute X'th root of Y
-		fInverse = FALSE;
+static void FYToXOp(FLOAT_STATE *state, CALCULATOR_REPORT_ERROR reportError, void *context) {
+	PFSTACK pFStack = &state->Stack;
+	if (state->Inverse) { // Inverse power uses the reciprocal exponent.
+		state->Inverse = FALSE;
 		if (pFStack->X != 0.0) {
 			pFStack->X = (1.0 / pFStack->X);
 		}
 		else {
-			ErrorBox("Division by zero");
+			reportError(context, "Division by zero");
 			return; 				// don't do the pow function
 		}
 	}
 	
 	if (0.0 == pFStack->Y) {
 		if (0.0 == pFStack->X) {
-			ErrorBox("0^0 is undefined");
+			reportError(context, "0^0 is undefined");
 			return;
 		}
 	}
@@ -909,43 +645,28 @@ void FYToXOp(PFSTACK pFStack) {
 	// BUGBUG: We maybe should do other input verification checks here.
 	
 	pFStack->X = pow(pFStack->Y, pFStack->X);
-	FDropY(pFStack);
+	DropFloatY(pFStack);
 }
 
 
-/*** FEnterOp -- Enter the number or Dup.
-*
-* ENTRY    - pFStack
-*			 pEntryString
-* EXIT	   - none
-* SYNOPSIS - First, move the stack up.	Then, if fEnter, we should turn
-*			 off fEnter and convert the entry string to float.
-*
-*/
-
-void FEnterOp(PFSTACK pFStack, PUCHAR pEntryString)
+// Enter commits an active entry in place; otherwise it duplicates X.
+static void FEnterOp(FLOAT_STATE *state, BOOL *entering)
 {
-	if (fEnter) {
-		fEnter = FALSE;
-		pFStack->X = atof(pEntryString);
+	PFSTACK pFStack = &state->Stack;
+	if (*entering) {
+		*entering = FALSE;
+		pFStack->X = atof((const char *)state->Entry);
 	}
 	else {
-		pFStack->T = pFStack->Z;
-		pFStack->Z = pFStack->Y;
-		pFStack->Y = pFStack->X;
+		DuplicateFloatX(pFStack);
 	}
 }
 
 
-/*** FPiOp -- Enter pi in X
-*
-* ENTER    - pFStack
-*
-*/
-void FPiOp(PFSTACK pFStack)
+static void CommitFloatEntry(FLOAT_STATE *state, BOOL *entering)
 {
-	FEnterOp(pFStack, pEntryString);
-	pFStack->X = PI_VALUE;
+	if (*entering)
+		FEnterOp(state, entering);
 }
 
 
@@ -955,27 +676,16 @@ void FPiOp(PFSTACK pFStack)
 *
 */
 
-void FDropOp(PFSTACK pFStack)
-{
-	pFStack->X = pFStack->Y;
-	pFStack->Y = pFStack->Z;
-	pFStack->Z = pFStack->T;
-	pFStack->T = 0;
-	fEnter = FALSE;
-}
-
-
 /*** FBackSpaceOp -- removes the right-most digit from X.
 *
 * ENTRY    - pEntryString
 *			 fEnter
 * EXIT	   - none
-* SYNOPSIS - Removes the right-most digit from X, depending on the current
-*			 base and integer type.
+* SYNOPSIS - Removes the last character of an active float entry.
 *
 */
 
-void FBackSpaceOp(PUCHAR pEntryString, BOOL fEnter)
+static void FBackSpaceOp(PUCHAR pEntryString, BOOL fEnter)
 {
 	size_t Length;
 	
@@ -1002,83 +712,88 @@ void FClearStack(PFSTACK pFStack)
 }
 
 
-/*** CalcIt -- Decide which operation to perform
-*
-* ENTRY    - pFStack
-*			 dwOperation = the operation to perform
-*			 hwnd = handle to calculator window
-* EXIT	   - none
-* SYNOPSIS - Delegates authority to one of the Op routines.
-*
-*/
-
-void FCalcIt(PFSTACK pFStack, DWORD dwOperation, HWND hwnd)
+CALCULATOR_RESULT FloatCommand(FLOAT_STATE *state, DWORD dwOperation, BOOL *entering,
+                              BOOL *error, CALCULATOR_REPORT_ERROR reportError, void *context)
 {
-	BOOLEAN		SwitchMode = FALSE;
-	
-	//	  DebugPrintf("CalcIt(%u)\n", dwOperation);
+	PFSTACK pFStack = &state->Stack;
+	UCHAR ch = (UCHAR)dwOperation;
+
+	// The first digit lifts the stack. Until commit, editing changes only
+	// the entry string; X still contains the previous numeric value.
+	if (IsFloatChar(ch)) {
+		if (!*entering) {
+			FEnterOp(state, entering);
+			state->Entry[0] = '\0';
+			*entering = TRUE;
+		}
+		return FNumTest(state->Entry, ch) ? CALCULATOR_REDRAW : CALCULATOR_ENTRY_REJECTED;
+	}
 	
 	switch(dwOperation) {
-	case ENTER: 			FEnterOp(pFStack, pEntryString);
+	case ENTER: 			FEnterOp(state, entering);
 		break;
-	case EEX_KEY:			FEExOp(pEntryString, fEnter);
+	case EEX_KEY:			return FEExOp(state->Entry, *entering) ? CALCULATOR_REDRAW : CALCULATOR_ENTRY_REJECTED;
+	case SWAP_KEY:			CommitFloatEntry(state, entering);
+		SwapFloatRegisters(pFStack);
 		break;
-	case SWAP_KEY:			FSwapOp(pFStack);
+	case PLUS_KEY:			CommitFloatEntry(state, entering);
+		FAddOp(pFStack);
 		break;
-	case PLUS_KEY:			FAddOp(pFStack);
+	case MINUS_KEY: 		CommitFloatEntry(state, entering);
+		FSubtractOp(pFStack);
 		break;
-	case MINUS_KEY: 		FSubtractOp(pFStack);
+	case UNARY_PLUS_KEY:	CommitFloatEntry(state, entering);
+		FUnaryAddOp(pFStack);
 		break;
-	case UNARY_PLUS_KEY:	FUnaryAddOp(pFStack);
+	case UNARY_MINUS_KEY:	CommitFloatEntry(state, entering);
+		FUnarySubtractOp(pFStack);
 		break;
-	case UNARY_MINUS_KEY:	FUnarySubtractOp(pFStack);
+	case MULT_KEY:			CommitFloatEntry(state, entering);
+		FMultiplyOp(pFStack);
 		break;
-	case MULT_KEY:			FMultiplyOp(pFStack);
+	case DIV_KEY:			CommitFloatEntry(state, entering);
+		FDivideOp(pFStack, reportError, context);
 		break;
-	case DIV_KEY:			FDivideOp(pFStack);
+	case ONE_OVER_KEY:		CommitFloatEntry(state, entering);
+		FOneOverOp(pFStack, reportError, context);
 		break;
-	case ONE_OVER_KEY:		FOneOverOp(pFStack);
+	case NEGATE_KEY:		return FNegOp(state, *entering) ? CALCULATOR_REDRAW : CALCULATOR_ENTRY_REJECTED;
+	case BACKSPACE_KEY: 	FBackSpaceOp(state->Entry, *entering);
 		break;
-	case NEGATE_KEY:		FNegOp(pFStack, pEntryString, fEnter);
+	case DELETE_KEY:		DropFloatX(pFStack);
+		*entering = FALSE;
 		break;
-	case BACKSPACE_KEY: 	FBackSpaceOp(pEntryString, fEnter);
+	case ROLL_DOWN_KEY: 	CommitFloatEntry(state, entering);
+		RollFloatRegisters(pFStack);
 		break;
-	case DELETE_KEY:		FDropOp(pFStack);
+	case INVERSE_KEY:		state->Inverse = !state->Inverse;
 		break;
-	case ROLL_DOWN_KEY: 	FRollDownOp(pFStack);
+	case PI_KEY:			FEnterOp(state, entering);
+		pFStack->X = PI_VALUE;
 		break;
-	case INVERSE_KEY:		fInverse = !fInverse;
+	case SIN_KEY:			CommitFloatEntry(state, entering);
+		FSinOp(state, reportError, context);
 		break;
-	case PI_KEY:			FPiOp(pFStack);
+	case COS_KEY:			CommitFloatEntry(state, entering);
+		FCosOp(state, reportError, context);
 		break;
-	case SIN_KEY:			FSinOp(pFStack);
+	case TAN_KEY:			CommitFloatEntry(state, entering);
+		FTanOp(state);
 		break;
-	case COS_KEY:			FCosOp(pFStack);
+	case LOG_KEY:			CommitFloatEntry(state, entering);
+		FLogOp(state, reportError, context);
 		break;
-	case TAN_KEY:			FTanOp(pFStack);
+	case LN_KEY:			CommitFloatEntry(state, entering);
+		FLnOp(state, reportError, context);
 		break;
-	case LOG_KEY:			FLogOp(pFStack);
+	case SQRT_KEY:			CommitFloatEntry(state, entering);
+		FSqrtOp(state, reportError, context);
 		break;
-	case LN_KEY:			FLnOp(pFStack);
-		break;
-	case SQRT_KEY:			FSqrtOp(pFStack);
-		break;
-	case YTOX_KEY:			FYToXOp(pFStack);
+	case YTOX_KEY:			CommitFloatEntry(state, entering);
+		FYToXOp(state, reportError, context);
 		break;
 		
-	case IDM_BINARY:		ChangeBase(2);
-		SwitchMode = TRUE;
-		break;
-	case IDM_OCTAL: 		ChangeBase(8);
-		SwitchMode = TRUE;
-		break;
-	case IDM_DECIMAL:		ChangeBase(10);
-		SwitchMode = TRUE;
-		break;
-	case IDM_HEXADECIMAL:	ChangeBase(16);
-		SwitchMode = TRUE;
-		break;
-		
+	// Legacy display menu IDs are accepted but never changed float settings.
 	case IDM_DISPLAY_AUTO:
 	case IDM_DISPLAY_FIX_0:
 	case IDM_DISPLAY_FIX_1:
@@ -1133,54 +848,67 @@ void FCalcIt(PFSTACK pFStack, DWORD dwOperation, HWND hwnd)
 		break;
 		
 	case IDM_TRIG_DEGREE:
-		usFloatAngleType = FLOAT_ANGLE_DEG;
+		state->AngleType = FLOAT_ANGLE_DEG;
 		break;
 	case IDM_TRIG_RADIAN:
-		usFloatAngleType = FLOAT_ANGLE_RAD;
+		state->AngleType = FLOAT_ANGLE_RAD;
 		break;
 	case IDM_TRIG_GRAD:
-		usFloatAngleType = FLOAT_ANGLE_GRAD;
+		state->AngleType = FLOAT_ANGLE_GRAD;
 		break;
-		
+
+	default:
+		*error = TRUE;
+		return CALCULATOR_UNKNOWN_COMMAND;
+	}
+
+	return CALCULATOR_REDRAW;
+}
+
+static void FCalcIt(DWORD dwOperation, HWND hwnd)
+{
+	FLOAT_STATE *state = &Calculator.Float;
+
+	switch (dwOperation) {
 	case IDM_COPY_X:
 		// If we are in entry mode, string copy from the entry string
 		// otherwise, convert the value in X.
 		
-		if (fEnter)
-			StrClipboardCopy(pEntryString);
+		if (Calculator.Entering)
+			StrClipboardCopy(state->Entry);
 		else
-			FClipboardCopy(FStack.X, usSignificantDigits, usFloatDisplayMode);
+			FClipboardCopy(state->Stack.X, state->SignificantDigits, state->DisplayMode);
 		break;
 		
 	case IDM_COPY_Y:
-		FClipboardCopy(FStack.Y, usSignificantDigits, usFloatDisplayMode);
+		FClipboardCopy(state->Stack.Y, state->SignificantDigits, state->DisplayMode);
 		break;
 		
 	case IDM_COPY_Z:
-		FClipboardCopy(FStack.Z, usSignificantDigits, usFloatDisplayMode);
+		FClipboardCopy(state->Stack.Z, state->SignificantDigits, state->DisplayMode);
 		break;
 		
 	case IDM_COPY_T:
-		FClipboardCopy(FStack.T, usSignificantDigits, usFloatDisplayMode);
+		FClipboardCopy(state->Stack.T, state->SignificantDigits, state->DisplayMode);
 		break;
 		
 	case IDM_PASTE_X:
-		if (fEnter)
-			StrClipboardPaste(pEntryString);
+		if (Calculator.Entering)
+			StrClipboardPaste(state->Entry);
 		else
-			FClipboardPaste(&FStack.X);
+			FClipboardPaste(&state->Stack.X);
 		break;
 		
 	case IDM_PASTE_Y:
-		FClipboardPaste(&FStack.Y);
+		FClipboardPaste(&state->Stack.Y);
 		break;
 		
 	case IDM_PASTE_Z:
-		FClipboardPaste(&FStack.Z);
+		FClipboardPaste(&state->Stack.Z);
 		break;
 		
 	case IDM_PASTE_T:
-		FClipboardPaste(&FStack.T);
+		FClipboardPaste(&state->Stack.T);
 		break;
 		
 	case IDM_HELP_ABOUT:
@@ -1194,21 +922,8 @@ void FCalcIt(PFSTACK pFStack, DWORD dwOperation, HWND hwnd)
 		break;
 		
 	default:
-		DebugPrintf("Don't recognize %u operation\n", dwOperation);
-		ErrorFlag = TRUE;
-	}
-		
-
-	//
-	//  Switch calculator modes if the user stepped on the base menu.
-	//  We've already "switched" bases.
-	//
-		
-	if (SwitchMode) {
-		bQuit = FALSE;
-		usCalcMode = CALC_MODE_BINARY;
-		PostMessage(hwnd, WM_COMMAND, IDM_CHANGE_MODE, 0);
-		return; 	// don't redraw the stack display
+		RunCalculatorCommand(hwnd, dwOperation);
+		return;
 	}
 
 	RedrawDisplay(hDisplay);
@@ -1309,7 +1024,7 @@ BOOL FHelpKeys( DWORD dwOperation, HANDLE hInst, HWND hwnd ,
 *		   Assumes that there is room for another character in the string.
 */
 
-BOOL FNumTest(PUCHAR pEntryString, UCHAR Char) {
+static BOOL FNumTest(PUCHAR pEntryString, UCHAR Char) {
 	size_t Length;
 	PUCHAR pTemp;
 	DWORD DotCount = 0;

@@ -197,9 +197,7 @@ RPN.H header file
 #define FLOAT_DISPLAY_FIX   1
 #define FLOAT_DISPLAY_SCI   2
 #define FLOAT_DISPLAY_ENG   3
-
-#define CALC_MODE_BINARY    1
-#define CALC_MODE_FLOAT     2
+#define FLOAT_SIGNIFICANT_DIGITS 10
 
 #define PI_VALUE            (3.1415926535897932384)
 
@@ -228,17 +226,17 @@ RPN.H header file
 #define MAXUCHAR        0xff
 #endif
 
-#define MaxWordSize() (WordSize == 64? MAXULONGLONG:    \
+#define MaxWordSize(WordSize) (WordSize == 64? MAXULONGLONG:    \
 	WordSize == 32? MAXULONG:        \
 	WordSize == 16? MAXUSHORT:       \
 MAXUCHAR)
 
-#define MaxSignedWordSize() (WordSize == 64? MAXLONGLONG:    \
+#define MaxSignedWordSize(WordSize) (WordSize == 64? MAXLONGLONG:    \
 	WordSize == 32? MAXLONG:        \
 	WordSize == 16? MAXSHORT:       \
 MAXCHAR)
 
-#define MinSignedWordSize() (WordSize == 64? MINLONGLONG:    \
+#define MinSignedWordSize(WordSize) (WordSize == 64? MINLONGLONG:    \
 	WordSize == 32? MINLONG:        \
 	WordSize == 16? MINSHORT:       \
 MINCHAR)
@@ -356,37 +354,109 @@ typedef struct _FSTACK {
     FNUMBER T;
 } FSTACK, *PFSTACK;
 
+void SwapIntegerRegisters(PSTACK stack);
+void SwapFloatRegisters(PFSTACK stack);
+void RollIntegerRegisters(PSTACK stack);
+void RollFloatRegisters(PFSTACK stack);
+void DuplicateIntegerX(PSTACK stack);
+void DuplicateFloatX(PFSTACK stack);
+void DropIntegerX(PSTACK stack);
+void DropFloatX(PFSTACK stack);
+void DropIntegerY(PSTACK stack);
+void DropFloatY(PFSTACK stack);
 
-extern USHORT Radix;
-extern USHORT WordSize;
-extern USHORT usIntegerType;
-extern USHORT LastRadix;
-extern STACK Stack;
-extern BOOL fEnter;
+typedef struct _INTEGER_STATE {
+    USHORT Radix;
+    USHORT WordSize;
+    USHORT IntegerType;
+    USHORT LastRadix;
+    STACK Stack;
+} INTEGER_STATE;
+
+char *IntToA(NUMBER value, char *buffer, ULONG length, USHORT radix,
+             USHORT integerType, USHORT wordSize, BOOLEAN adorn);
+BOOL StrNumTest(PUCHAR text, USHORT radix, USHORT integerType, USHORT wordSize,
+                PNUMBER number);
+BOOL IsBaseDigit(UCHAR ch, USHORT radix);
+
+typedef struct _FLOAT_STATE {
+    FSTACK Stack;
+    UCHAR Entry[DISPLAY_WIDTH + 1];
+    USHORT SignificantDigits;
+    USHORT DisplayMode;
+    USHORT AngleType;
+    BOOL Inverse;
+} FLOAT_STATE;
+
+char *FToA(FNUMBER value, char *buffer, ULONG length, USHORT significantDigits,
+           USHORT displayMode, BOOLEAN adorn);
+
+// These values are also used by the existing registry format.
+typedef enum _CALC_MODE {
+    CALC_MODE_BINARY = 1,
+    CALC_MODE_FLOAT = 2
+} CALC_MODE;
+
+typedef struct _CALCULATOR_STATE {
+    INTEGER_STATE Integer;
+    FLOAT_STATE Float;
+    CALC_MODE Mode;
+    // Both modes see the same flags, even when switching during entry.
+    BOOL Entering;
+    BOOL Error;
+} CALCULATOR_STATE;
+
+typedef struct _DISPLAY_LINES {
+    char Text[5][DISPLAY_WIDTH + 1];  // Status, T, Z, Y, X
+} DISPLAY_LINES;
+
+// Compose all five rows without GDI. A row that cannot be formatted is
+// empty and makes the result FALSE; the other rows remain available.
+BOOL ComposeDisplayLines(const CALCULATOR_STATE *state, DISPLAY_LINES *lines);
+
+typedef enum _CALCULATOR_RESULT {
+    CALCULATOR_REDRAW,
+    CALCULATOR_ENTRY_REJECTED,
+    CALCULATOR_UNKNOWN_COMMAND,
+    CALCULATOR_MODE_CHANGED
+} CALCULATOR_RESULT;
+
+typedef void (*CALCULATOR_REPORT_ERROR)(void *context, const char *message);
+
+extern CALCULATOR_STATE Calculator;
+extern const CALCULATOR_STATE CalculatorDefaults;
+// Route a calculation or mode command without a window. The required
+// callback reports modal errors synchronously, at the same point as the UI.
+CALCULATOR_RESULT CalculatorCommand(CALCULATOR_STATE *state, DWORD command,
+                                   CALCULATOR_REPORT_ERROR reportError, void *context);
+CALCULATOR_RESULT IntegerCommand(INTEGER_STATE *state, DWORD command, BOOL *entering,
+                                BOOL *error, CALCULATOR_REPORT_ERROR reportError, void *context);
+CALCULATOR_RESULT FloatCommand(FLOAT_STATE *state, DWORD command, BOOL *entering,
+                              BOOL *error, CALCULATOR_REPORT_ERROR reportError, void *context);
+void RunCalculatorCommand(HWND hwnd, DWORD command);
+
 extern BOOL fHelpKeysMode;
 extern BOOL fKeypadHidden;
 extern HWND hDisplay;
 extern HWND hwndDialog;
 extern DWORD cyChar;
 extern HANDLE hInst;
-extern USHORT usCalcMode;
 extern BOOL fFirstTime;
-extern BOOL bFirstMove;
 extern BOOL bQuit;
-
 extern DWORD dwWindowX;
 extern DWORD dwWindowY;
-extern DWORD MenuY;
-extern DWORD CaptionY;
-extern FSTACK FStack;
-extern UCHAR pEntryString[];
-extern USHORT usSignificantDigits;
-extern USHORT usFloatDisplayMode;
-extern USHORT usFloatAngleType;
 
-extern BOOL ErrorFlag;
+typedef struct _RPN_WINDOW_STATE {
+    DWORD X;
+    DWORD Y;
+    BOOL KeypadHidden;
+} RPN_WINDOW_STATE;
 
-void SaveRPNState(void);
+DWORD SaveRPNStateToKey(HKEY key, const CALCULATOR_STATE *state, const RPN_WINDOW_STATE *window);
+// Restore into startup defaults. A missing value keeps its default; malformed
+// values keep their defaults and set the display error flag.
+void RestoreRPNStateFromKey(HKEY key, CALCULATOR_STATE *state, RPN_WINDOW_STATE *window);
+DWORD SaveRPNState(void);
 void RestoreRPNState(void);
 void RedrawDisplay(HWND hwnd);
 void SetKeypadVisible(HWND hwnd, BOOL fShow);
@@ -394,11 +464,3 @@ void CALLBACK ClearErrorTimer(HWND hwnd, UINT message, UINT_PTR id, DWORD time);
 
 void FWmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 void FWmNotifyProc( HWND hwnd, int idCtrl, LPNMHDR pnmh );
-void FPaintStackDisplay(HWND hwnd, HDC hdc, PFSTACK pFStack, UCHAR * pEntryString);
-
-//
-//  ChangeBase is used in the float calculator now that the base/mode menu
-//  has been normalized.
-//
-
-void ChangeBase(USHORT Base);

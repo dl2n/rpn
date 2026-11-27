@@ -80,8 +80,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="rpn.c" />
+    <ClCompile Include="rpn_display.c" />
     <ClCompile Include="rpn_reg.c" />
     <ClCompile Include="rpnf.c" />
+    <ClCompile Include="rpn_stack.c" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="rpn.rc" />

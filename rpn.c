@@ -38,18 +38,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK DisplayControlProc(HWND hwnd, UINT message, WPARAM wParam,
 								 LPARAM lParam);
 INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
-void CalcIt(PSTACK pStack, DWORD dwOperation, HWND hwnd);
+static void CalcIt(DWORD dwOperation, HWND hwnd);
 BOOL HelpKeys( DWORD dwOperation, HANDLE hInst, HWND hwnd ,
                UCHAR* szStringBuffer, DWORD cbStringBuffer );
-void PaintStackDisplay(HWND hwnd, HDC hdc, PSTACK pStack, USHORT Radix);
+static void PaintStackDisplay(HWND hwnd, HDC hdc, const CALCULATOR_STATE *state);
 void DebugPrintf(const char * format, ...);
-char * IntToA(NUMBER Value, char * psString, ULONG Length, USHORT Radix, USHORT IntegerType, BOOLEAN Adorn);
-BOOL IsBaseDigit(UCHAR ch, USHORT Radix);
-void EnterOp(PSTACK pStack);
-BOOL NumTest(NUMBER X, USHORT Radix, USHORT Digit, USHORT usIntegerType);
-DWORD CreateCalc(USHORT CalcMode);
-BOOL StrNumTest(PUCHAR lpNumStr, USHORT Radix, USHORT usIntegerType,
-				PNUMBER pNumber);
+static BOOL NumTest(NUMBER X, USHORT Radix, USHORT Digit, USHORT usIntegerType, USHORT WordSize);
+DWORD CreateCalc(CALC_MODE CalcMode);
 BOOL ClipboardPaste(PNUMBER pdwNumber, USHORT Radix, USHORT usIntegerType);
 BOOL ClipboardCopy(NUMBER dwNumber, USHORT Radix, USHORT usIntegerType);
 
@@ -59,12 +54,14 @@ extern LRESULT CALLBACK FDisplayControlProc(HWND hwnd, UINT message, WPARAM wPar
 										 LPARAM lParam);
 
 
-USHORT Radix = 16;								// hexadecimal
-USHORT WordSize = 64;							// Default word size: 64.
-USHORT usIntegerType = INTEGER_TYPE_UNSIGNED;	// Default: 2's complement.
-USHORT LastRadix = 10;							// decimal
-STACK Stack = {0, 0, 0, 0}; 					// global binary stack
-BOOL fEnter = FALSE;
+CALCULATOR_STATE Calculator;
+const CALCULATOR_STATE CalculatorDefaults = {
+	// Start in 64-bit unsigned hex; Last Base initially selects decimal.
+	{16, 64, INTEGER_TYPE_UNSIGNED, 10, {0, 0, 0, 0}},
+	// Float starts in Auto with ten significant digits, degrees, and inverse off.
+	{{0.0, 0.0, 0.0, 0.0}, "", FLOAT_SIGNIFICANT_DIGITS, FLOAT_DISPLAY_AUTO, FLOAT_ANGLE_DEG, FALSE},
+	CALC_MODE_BINARY, FALSE, FALSE
+};
 BOOL fHelpKeysMode = FALSE; 					// Help keys mode
 BOOL fKeypadHidden = FALSE;						// Keypad rolled up
 int cyFullWindow = 0;							// Window height with keypad
@@ -73,19 +70,11 @@ HWND hDisplay;									// handle to display window
 HWND hwndDialog;
 DWORD cyChar;
 HANDLE hInst;
-USHORT usCalcMode = CALC_MODE_BINARY;
 BOOL fFirstTime = TRUE;
-BOOL bFirstMove = TRUE;
 BOOL bQuit = FALSE;
-
-BOOL ErrorFlag = FALSE;
 
 DWORD dwWindowX = 0;
 DWORD dwWindowY = 0;
-DWORD MenuY;
-DWORD CaptionY;
-DWORD BorderX;
-DWORD BorderY;
 
 #ifndef NO_TOOLTIPS
 HWND hwndTT = NULL;
@@ -164,17 +153,11 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 		}
 	}
 	
-	MenuY = GetSystemMetrics(SM_CYMENU);
-	CaptionY = GetSystemMetrics(SM_CYCAPTION);
-	BorderX = GetSystemMetrics(SM_CXDLGFRAME);
-	BorderY = GetSystemMetrics(SM_CYDLGFRAME);
-	DebugPrintf("MenuY = %u, CaptionY = %u\n", MenuY, CaptionY);
-	
 	hInst = hInstance;
 	
 	RestoreRPNState();
 	
-	if (rc = CreateCalc(usCalcMode))
+	if (rc = CreateCalc(Calculator.Mode))
 		return(rc);
 	
 	// Windows Message Loop
@@ -183,7 +166,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 	while (GetMessage(&msg, NULL, 0, 0)) {
 		TranslateMessage(&msg);
 		if (msg.message == WM_COMMAND && msg.wParam == IDM_CHANGE_MODE)
-			CreateCalc(usCalcMode);
+			CreateCalc(Calculator.Mode);
 		else
 			DispatchMessage(&msg);
 	}
@@ -202,7 +185,11 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 	
 	DebugPrintf("main returned from message loop\n");
 	
-	SaveRPNState();
+	rc = SaveRPNState();
+	if (rc != ERROR_SUCCESS) {
+		DebugPrintf("Could not save calculator state: %u\n", rc);
+		return (int)rc;
+	}
 	
 	return((int)msg.wParam);
 }
@@ -210,9 +197,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 
 void WmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 {
-    
-	USHORT Digit;
-
+    // Help mode intercepts the command before it can change calculator state.
     if ( fHelpKeysMode ) 
     {
         UCHAR szStringBuffer[ MAX_STRING_SIZE ];
@@ -224,48 +209,8 @@ void WmCommandProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	    		MB_OK | MB_ICONINFORMATION);
         }
     }
-    else 
-    {
-
-		//
-		// Check for digit keys:
-        //
-        
-        // digit in current base
-        if (IsBaseDigit((UCHAR)wParam, Radix)) {
-            
-            if (! fEnter) {
-                EnterOp(&Stack);
-                Stack.X = 0;
-                fEnter = TRUE;
-            }
-            
-            Digit = (USHORT)((UCHAR)wParam - (isdigit((UCHAR)wParam)
-                ? '0' : 'A' - 10));
-            //                    DebugPrintf("Digit received: %d\n", Digit);
-            
-            if (NumTest(Stack.X, Radix, Digit, usIntegerType)) {
-            /*
-            * Signed decimal numbers need special treatment if
-            * they are negative.
-                */
-                if ((Radix == 10) && (usIntegerType !=
-                    INTEGER_TYPE_UNSIGNED) &&
-                    ((SIGNED_NUMBER)Stack.X < 0))
-                    Stack.X = Radix * Stack.X - Digit;
-                else
-                    Stack.X = Radix * Stack.X + Digit;
-                RedrawDisplay(hDisplay);
-            }
-            else {
-                DebugPrintf("Overflow, don't add digit\n");
-            }
-        }
-        
-        else {  // operation pressed.
-            CalcIt(&Stack, (DWORD)wParam, hwnd);
-        }
-    }
+    else
+        CalcIt((DWORD)wParam, hwnd);
 }
 
 
@@ -339,14 +284,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
     case WM_CREATE:
         DebugPrintf("WM_CREATE message. hwnd = %u\n", hwnd);
-        bFirstMove = TRUE;
         break;
         
     case WM_SHOWWINDOW:
         DebugPrintf("WM_SHOWWINDOW message. hwnd = %u\n", hwnd);
         if (wParam) 
         {
-            SetWindowPos(hwnd, HWND_TOP, dwWindowX, dwWindowY, 0, 0,
+            SetWindowPos(hwnd, HWND_TOP, (LONG)dwWindowX, (LONG)dwWindowY, 0, 0,
                 SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
             DebugPrintf("SetWindowPos(%u, %u)\n", dwWindowX, dwWindowY);
         }
@@ -398,7 +342,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             return(0);
         }
         
-        switch (usCalcMode) 
+        switch (Calculator.Mode)
         {
         case CALC_MODE_BINARY:
             WmCommandProc(hwnd, message, wParam, lParam);
@@ -411,24 +355,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         
         
     case WM_MOVE:
-        DebugPrintf("WM_MOVE: (%u, %u), [0x%x, 0x%x]\n",
-            (DWORD)((MAKEPOINTS(lParam)).x),
-            (DWORD)((MAKEPOINTS(lParam)).y),
-            (DWORD)((MAKEPOINTS(lParam)).x),
-            (DWORD)((MAKEPOINTS(lParam)).y));
-        
-        // if this is the automatic move instruction and we have
-        // displayed a window already (ie, we are changing modes)
-        // reset the move coordinates before they are processed.
-
-      
-        if (! bFirstMove && (MAKEPOINTS(lParam).x > 0) && (MAKEPOINTS(lParam).y > 0)) 
-        {    
-            dwWindowX = (DWORD)((MAKEPOINTS(lParam)).x) - BorderX;
-            dwWindowY = (DWORD)((MAKEPOINTS(lParam)).y) -
-                (MenuY + CaptionY + BorderY);
+        // Ignore the provisional position of a new dialog and minimized bounds.
+        if (hwnd == hwndDialog && IsWindowVisible(hwnd) && !IsIconic(hwnd))
+        {
+            RECT bounds;
+            if (GetWindowRect(hwnd, &bounds)) {
+                dwWindowX = (DWORD)bounds.left;
+                dwWindowY = (DWORD)bounds.top;
+            } else {
+                DebugPrintf("GetWindowRect failed: %u\n", GetLastError());
+            }
         }
-        bFirstMove = FALSE;
         break;
         
     case WM_DESTROY:
@@ -466,7 +403,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         //			  DebugPrintf("Unhandled message %u\n", message);
 
     case WM_NOTIFY:
-        switch (usCalcMode) 
+        switch (Calculator.Mode)
         {
         case CALC_MODE_BINARY:
             WmNotifyProc(hwnd, (int)wParam, (LPNMHDR)lParam);
@@ -508,16 +445,7 @@ LRESULT CALLBACK DisplayControlProc(HWND hwnd, UINT message, WPARAM wParam,
 
 		    //			  DebugPrintf("WM_PAINT message hwnd:%x\n", hwnd);
 
-		    switch (usCalcMode) 
-            {
-		    case CALC_MODE_BINARY:
-			    PaintStackDisplay(hwnd, hdc, &Stack, Radix);
-			    break;
-		
-            case CALC_MODE_FLOAT:
-			    FPaintStackDisplay(hwnd, hdc, &FStack, pEntryString);
-			    break;
-		    }
+		    PaintStackDisplay(hwnd, hdc, &Calculator);
 
             EndPaint(hwnd, &ps);
 
@@ -546,18 +474,19 @@ void RedrawDisplay(HWND hwnd) {
 
 void CALLBACK ClearErrorTimer(HWND hwnd, UINT message, UINT_PTR id, DWORD time) {
 
-	ErrorFlag = FALSE;
+	Calculator.Error = FALSE;
 	RedrawDisplay(hwnd);
 }
 
 
-void PaintStackDisplay(HWND hwnd, HDC hdc, PSTACK pStack, USHORT Radix) {
-	char psString[DISPLAY_WIDTH + 1];  // 64 bits + 1 for null
+static void PaintStackDisplay(HWND hwnd, HDC hdc, const CALCULATOR_STATE *state) {
+	DISPLAY_LINES lines;
 	RECT rect;
-	char *psIntegerType;
-	char *psBase;
+	int row;
 
-	//	  DebugPrintf("PaintStackDisplay(hwnd: %u)\n", hwnd);
+	if (!ComposeDisplayLines(state, &lines))
+		DebugPrintf("Could not format one or more stack display rows\n");
+
 	SelectObject(hdc, GetStockObject(BLACK_PEN));
 	SelectObject(hdc, GetStockObject(BLACK_BRUSH));
 	GetClientRect(hwnd, &rect);
@@ -567,71 +496,27 @@ void PaintStackDisplay(HWND hwnd, HDC hdc, PSTACK pStack, USHORT Radix) {
 	SetBkColor(hdc, RGB(0, 0, 0));					 // Black background color
 	
 	SetTextColor(hdc, RGB(0, 255, 0));				 // Green text color
+	TextOut(hdc, 1, 1, lines.Text[0], (int)strlen(lines.Text[0]));
 
-	switch(usIntegerType) {
-	case INTEGER_TYPE_1S_COMP:
-		psIntegerType = "~1s";
-		break;
-	case INTEGER_TYPE_2S_COMP:
-		psIntegerType = "~2s";
-		break;
-	default:
-		psIntegerType = "Unsigned";
-		break;
-	}
-
-	switch(Radix) {
-	case 16:
-		psBase = "Hex";
-		break;
-	case 10:
-		psBase = "Dec";
-		break;
-	case 8:
-		psBase = "Oct";
-		break;
-	default:
-		psBase = "Bin";
-		break;
-	}
-
-	sprintf_s(psString, sizeof(psString), "%c   %s  %-2u     %s",
-			(ErrorFlag? '!':' '),
-			psBase,
-			WordSize,
-			psIntegerType);
-	TextOut(hdc, 1, 1, psString, (int)strlen(psString));
-
-	//
-	//  Queue timer to clear the error flag.
-	//
-
-    if (ErrorFlag) {
+	// Start the error indicator's timer after drawing the status row.
+	if (state->Error)
 		SetTimer(hwnd, IDD_CLEAR_ERROR, 300, ClearErrorTimer);
-	}
 	
 	SetTextColor(hdc, RGB(255, 0, 0));				 // Red text color
-	
-	IntToA(pStack->T, psString, sizeof(psString), Radix, usIntegerType, TRUE);
-	TextOut(hdc, 1, 1 + (int)cyChar, psString, (int)strlen(psString));
-	
-	IntToA(pStack->Z, psString, sizeof(psString), Radix, usIntegerType, TRUE);
-	TextOut(hdc, 1, 1 + 2 * (int)cyChar, psString, (int)strlen(psString));
-	
-	IntToA(pStack->Y, psString, sizeof(psString), Radix, usIntegerType, TRUE);
-	TextOut(hdc, 1, 1 + 3 * (int)cyChar, psString, (int)strlen(psString));
-	
-	IntToA(pStack->X, psString, sizeof(psString), Radix, usIntegerType, TRUE);
-	TextOut(hdc, 1, 1 + 4 * (int)cyChar, psString, (int)strlen(psString));
+	for (row = 1; row < ARRAYSIZE(lines.Text); ++row)
+		TextOut(hdc, 1, 1 + row * (int)cyChar, lines.Text[row], (int)strlen(lines.Text[row]));
 }
 
 
 
-char * IntToA(NUMBER Value, char * psString, ULONG Length, USHORT Radix, USHORT IntegerType, BOOLEAN Adorn) {
+char * IntToA(NUMBER Value, char * psString, ULONG Length, USHORT Radix, USHORT IntegerType, USHORT WordSize, BOOLEAN Adorn) {
+	char digits[sizeof(NUMBER) * CHAR_BIT + 1];
+	char *number = Adorn ? digits : psString;
+	ULONG capacity = Adorn ? sizeof(digits) : Length;
 	
 	switch (IntegerType) {
 	case INTEGER_TYPE_UNSIGNED:
-		if (_ui64toa_s(Value, psString, Length, Radix) != 0)
+		if (_ui64toa_s(Value, number, capacity, Radix) != 0)
 			return(NULL);
 		break;
 		
@@ -661,7 +546,7 @@ char * IntToA(NUMBER Value, char * psString, ULONG Length, USHORT Radix, USHORT 
 				break;
 			}
 		}
-		if (_i64toa_s((SIGNED_NUMBER)Value, psString, Length, Radix) != 0)
+		if (_i64toa_s((SIGNED_NUMBER)Value, number, capacity, Radix) != 0)
 			return(NULL);
 		break;
 		
@@ -696,6 +581,12 @@ char * IntToA(NUMBER Value, char * psString, ULONG Length, USHORT Radix, USHORT 
 			SplitUnit = 8;
 			break;
 		}
+
+		// Check the grouped length before copying to the fixed-width row.
+		Remain = strlen(digits + (digits[0] == '-'));
+		if (strlen(digits) + (Remain - 1) / SplitUnit >= Length)
+			return NULL;
+		strcpy_s(psString, Length, digits);
 
 		//
 		//  Shove past the sign if existant.
@@ -810,51 +701,26 @@ void ErrorBox(const char * format, ...) {
 }
 
 
-/*** ChangeBase -- Changes the input/display base
-*
-* ENTRY    - Base = new base
-* EXIT	   - none
-* SYNOPSIS - Changes the current number base.  Also updates the last used
-*			 base for use by the LastBase command.	Only changes the base
-*			 if the new base is different from the current one, so that the
-*			 Last Base is always different than the current base.
-* EFFECTS  - Effects globals: Radix and LastRadix.
-*
-*/
-
-void ChangeBase(USHORT Base)
+// Last Base tracks the previous distinct radix. The display is too narrow
+// for 64-bit binary, so reject that combination without changing history.
+static void SetIntegerBase(INTEGER_STATE *state, USHORT Base, BOOL *error)
 {
-	
-	//
-	//  Until the display can take 64bit binary, disable that mode.
-	//
-
-	if (WordSize == 64 && Base == 2) {
-		ErrorFlag = TRUE;
+	if (state->WordSize == 64 && Base == 2) {
+		*error = TRUE;
 		return;
 	}
-	if (Radix != Base) {
-		LastRadix = Radix;
-		Radix = Base;
+	if (state->Radix != Base) {
+		state->LastRadix = state->Radix;
+		state->Radix = Base;
 	}
 }
 
-
-/*** CastNumber -- Smashes the input according to the current wordsize.
-*
-* ENTRY    - Number - pointer to number to cast
-* EXIT	   - none
-* SYNOPSIS - Strips or promotes the number according to the current
-*			 wordsize, sign extending as appropriate to the current
-*			 integer type.
-* EFFECTS  - Uses global: WordSize
-*
-*/
-
-void CastNumber(PNUMBER Castee)
+// Narrow to the selected word size; signed values stay sign-extended in
+// the 64-bit registers, including when a narrower setting is selected.
+static void CastNumber(const INTEGER_STATE *state, PNUMBER Castee)
 {
-	if (usIntegerType != INTEGER_TYPE_UNSIGNED) {
-		switch (WordSize) {
+	if (state->IntegerType != INTEGER_TYPE_UNSIGNED) {
+		switch (state->WordSize) {
 		case 32:
 			*Castee = (LONG)((SIGNED_NUMBER)*Castee);
 			break;
@@ -866,7 +732,7 @@ void CastNumber(PNUMBER Castee)
 			break;
 		}
 	} else {
-		switch (WordSize) {
+		switch (state->WordSize) {
 		case 32:
 			*Castee = (ULONG)*Castee;
 			break;
@@ -889,12 +755,12 @@ void CastNumber(PNUMBER Castee)
 *
 */
 
-void CastStack(PSTACK pStack)
+static void CastStack(INTEGER_STATE *state)
 {
-	CastNumber(&pStack->X);
-	CastNumber(&pStack->Y);
-	CastNumber(&pStack->Z);
-	CastNumber(&pStack->T);
+	CastNumber(state, &state->Stack.X);
+	CastNumber(state, &state->Stack.Y);
+	CastNumber(state, &state->Stack.Z);
+	CastNumber(state, &state->Stack.T);
 }
 
 
@@ -920,28 +786,28 @@ void ClearStack(PSTACK pStack)
 * ENTRY    - Word size = new word size
 * EXIT	   - none
 * SYNOPSIS - Changes the current word size.
-* EFFECTS  - Effects globals: WordSize, recasts the stack
+* EFFECTS  - The new size applies to all four registers immediately.
 *
 */
 
-void ChangeWordSize(PSTACK pStack, USHORT Size)
+static void ChangeWordSize(INTEGER_STATE *state, USHORT Size, BOOL *error)
 {
 	//
 	//  Until the display can take 64bit binary, disable that mode.
 	//
 
-	if (Size == 64 && Radix == 2) {
-		ErrorFlag = TRUE;
+	if (Size == 64 && state->Radix == 2) {
+		*error = TRUE;
 		return;
 	}
 
-	WordSize = Size;
+	state->WordSize = Size;
 	
 	//
 	//	Recast the stack to match the new wordsize.
 	//
 	
-	CastStack(pStack);
+	CastStack(state);
 }
 
 /*** ChangeIntegerType -- Changes the input/display integer representation
@@ -949,23 +815,23 @@ void ChangeWordSize(PSTACK pStack, USHORT Size)
 * ENTRY    - dwOperation = Identifier of menu item
 * EXIT	   - none
 * SYNOPSIS - Changes the current integer representation.
-* EFFECTS  - Effects globals: usIntegerType, recasts the stack
+* EFFECTS  - The new representation applies to all four registers immediately.
 *
 */
 
-void ChangeIntegerType(PSTACK pStack, DWORD dwOperation, HWND hwnd)
+static void ChangeIntegerType(INTEGER_STATE *state, DWORD dwOperation)
 {
 	switch(dwOperation) {
 	case IDM_INTEGER_TYPE_UNSIGNED:
-		usIntegerType = INTEGER_TYPE_UNSIGNED;
+		state->IntegerType = INTEGER_TYPE_UNSIGNED;
 		break;
 		
 	case IDM_INTEGER_TYPE_1S:
-		usIntegerType = INTEGER_TYPE_1S_COMP;
+		state->IntegerType = INTEGER_TYPE_1S_COMP;
 		break;
 		
 	case IDM_INTEGER_TYPE_2S:
-		usIntegerType = INTEGER_TYPE_2S_COMP;
+		state->IntegerType = INTEGER_TYPE_2S_COMP;
 		break;
 	default:
 		break;
@@ -975,47 +841,14 @@ void ChangeIntegerType(PSTACK pStack, DWORD dwOperation, HWND hwnd)
 	//	Recast the stack to match the new integer type.
 	//
 	
-	CastStack(pStack);
+	CastStack(state);
 }
 
 
-/*** DropY -- Drops Y from the stack, copying Z and T down.
-*
-* ENTRY    - pStack
-* EXIT	   - none.
-* SYNOPSIS - Moves Z over Y and T over Z.  Keeps the contents of T.
-* WARNINGS -
-* EFFECTS  -
-*
-*/
-
-void DropY(PSTACK pStack)
+static void RollDownOp(PSTACK pStack, BOOL *entering)
 {
-	pStack->Y = pStack->Z;
-	pStack->Z = pStack->T;
-}
-
-
-/*** RollDownOp -- Roll the stack down one
-*
-* ENTRY    - pStack
-* EXIT	   - none
-* SYNOPSIS - Rolls the contents of the stack down one level; ie, X -> T,
-*			 Y -> X, etc.
-*
-*/
-
-void RollDownOp(PSTACK pStack)
-{
-	register NUMBER Temp;
-	
-	
-	Temp = pStack->X;
-	pStack->X = pStack->Y;
-	pStack->Y = pStack->Z;
-	pStack->Z = pStack->T;
-	pStack->T = Temp;
-	fEnter = FALSE;
+	RollIntegerRegisters(pStack);
+	*entering = FALSE;
 }
 
 
@@ -1028,15 +861,10 @@ void RollDownOp(PSTACK pStack)
 *
 */
 
-void SwapOp(PSTACK pStack)
+static void SwapOp(PSTACK pStack, BOOL *entering)
 {
-	register NUMBER Temp;
-	
-	
-	Temp = pStack->X;
-	pStack->X = pStack->Y;
-	pStack->Y = Temp;
-	fEnter = FALSE;
+	SwapIntegerRegisters(pStack);
+	*entering = FALSE;
 }
 
 
@@ -1048,10 +876,10 @@ void SwapOp(PSTACK pStack)
 *
 */
 
-void KiloOp(PSTACK pStack)
+static void KiloOp(PSTACK pStack, BOOL *entering)
 {
 	pStack->X *= KILO;
-	fEnter = FALSE;
+	*entering = FALSE;
 }
 
 
@@ -1063,10 +891,10 @@ void KiloOp(PSTACK pStack)
 *
 */
 
-void NegOp(PSTACK pStack)
+static void NegOp(PSTACK pStack, BOOL *entering)
 {
 	(SIGNED_NUMBER)pStack->X = -(SIGNED_NUMBER)(pStack->X);
-	fEnter = FALSE;
+	*entering = FALSE;
 }
 
 
@@ -1078,53 +906,47 @@ void NegOp(PSTACK pStack)
 *
 */
 
-void NotOp(PSTACK pStack)
+static void NotOp(PSTACK pStack, BOOL *entering)
 {
 	pStack->X = ~(pStack->X);
-	fEnter = FALSE;
+	*entering = FALSE;
 }
 
 
-/*** DivideOp -- (Y / X) --> X
-*
-* ENTRY    - hwnd = handle to the current window
-*			 pStack
-* EXIT	   - none
-* SYNOPSIS - Divide Y by X into X.	 Move stack down, clear fEnter.
-*
-*/
-
-void DivideOp(PSTACK pStack)
+// Present divide-by-zero before ending entry or recasting X. A modal dialog
+// can repaint the calculator while these values still describe the input.
+static void DivideOp(PSTACK pStack, BOOL *entering,
+                     CALCULATOR_REPORT_ERROR reportError, void *context)
 {
 	if (pStack->X != 0) {
 		pStack->X = pStack->Y / pStack->X;
-		DropY(pStack);
+		DropIntegerY(pStack);
 	}
 	else
-		ErrorBox("Division by zero");
+		reportError(context, "Division by zero");
 	
-	fEnter = FALSE;
+	*entering = FALSE;
 }
 
 
 /*** ModOp -- (Y % X) --> X
 *
-* ENTRY    - hwnd = handle to the current window
-*			 pStack
+* ENTRY    - pStack
 * EXIT	   - none
 * SYNOPSIS - Mod Y by X into X.   Move stack down, clear fEnter.
 *
 */
 
-void ModOp(PSTACK pStack)
+static void ModOp(PSTACK pStack, BOOL *entering,
+                  CALCULATOR_REPORT_ERROR reportError, void *context)
 {
 	if (pStack->X != 0) {
 		pStack->X = pStack->Y % pStack->X;
-		DropY(pStack);
+		DropIntegerY(pStack);
 	}
 	else
-		ErrorBox("Division by zero");
-	fEnter = FALSE;
+		reportError(context, "Division by zero");
+	*entering = FALSE;
 }
 
 
@@ -1136,11 +958,11 @@ void ModOp(PSTACK pStack)
 *
 */
 
-void AddOp(PSTACK pStack)
+static void AddOp(PSTACK pStack, BOOL *entering)
 {
 	pStack->X += pStack->Y;
-	DropY(pStack);
-	fEnter = FALSE;
+	DropIntegerY(pStack);
+	*entering = FALSE;
 }
 
 
@@ -1152,11 +974,11 @@ void AddOp(PSTACK pStack)
 *
 */
 
-void SubtractOp(PSTACK pStack)
+static void SubtractOp(PSTACK pStack, BOOL *entering)
 {
 	pStack->X = pStack->Y - pStack->X;
-	DropY(pStack);
-	fEnter = FALSE;
+	DropIntegerY(pStack);
+	*entering = FALSE;
 }
 
 
@@ -1168,10 +990,10 @@ void SubtractOp(PSTACK pStack)
 *
 */
 
-void UnaryAddOp(PSTACK pStack)
+static void UnaryAddOp(PSTACK pStack, BOOL *entering)
 {
 	pStack->X += 1;
-	fEnter = FALSE;
+	*entering = FALSE;
 }
 
 
@@ -1183,10 +1005,10 @@ void UnaryAddOp(PSTACK pStack)
 *
 */
 
-void UnarySubtractOp(PSTACK pStack)
+static void UnarySubtractOp(PSTACK pStack, BOOL *entering)
 {
 	pStack->X -= 1;
-	fEnter = FALSE;
+	*entering = FALSE;
 }
 
 
@@ -1198,11 +1020,11 @@ void UnarySubtractOp(PSTACK pStack)
 *
 */
 
-void MultiplyOp(PSTACK pStack)
+static void MultiplyOp(PSTACK pStack, BOOL *entering)
 {
 	pStack->X *= pStack->Y;
-	DropY(pStack);
-	fEnter = FALSE;
+	DropIntegerY(pStack);
+	*entering = FALSE;
 }
 
 
@@ -1214,11 +1036,11 @@ void MultiplyOp(PSTACK pStack)
 *
 */
 
-void AndOp(PSTACK pStack)
+static void AndOp(PSTACK pStack, BOOL *entering)
 {
 	pStack->X &= pStack->Y;
-	DropY(pStack);
-	fEnter = FALSE;
+	DropIntegerY(pStack);
+	*entering = FALSE;
 }
 
 
@@ -1230,11 +1052,11 @@ void AndOp(PSTACK pStack)
 *
 */
 
-void OrOp(PSTACK pStack)
+static void OrOp(PSTACK pStack, BOOL *entering)
 {
 	pStack->X |= pStack->Y;
-	DropY(pStack);
-	fEnter = FALSE;
+	DropIntegerY(pStack);
+	*entering = FALSE;
 }
 
 
@@ -1246,11 +1068,11 @@ void OrOp(PSTACK pStack)
 *
 */
 
-void XorOp(PSTACK pStack)
+static void XorOp(PSTACK pStack, BOOL *entering)
 {
 	pStack->X ^= pStack->Y;
-	DropY(pStack);
-	fEnter = FALSE;
+	DropIntegerY(pStack);
+	*entering = FALSE;
 }
 
 
@@ -1263,12 +1085,12 @@ void XorOp(PSTACK pStack)
 *
 */
 
-void LeftShiftOp(PSTACK pStack)
+static void LeftShiftOp(PSTACK pStack, BOOL *entering)
 {
 
 	pStack->X = pStack->Y << pStack->X;
-	DropY(pStack);
-	fEnter = FALSE;
+	DropIntegerY(pStack);
+	*entering = FALSE;
 }
 
 
@@ -1281,20 +1103,20 @@ void LeftShiftOp(PSTACK pStack)
 *
 */
 
-void RightShiftOp(PSTACK pStack)
+static void RightShiftOp(PSTACK pStack, BOOL *entering, USHORT integerType)
 {
 
 	//
 	//  Right shift is arithmetic if signed.
 	//
 	
-	if (usIntegerType == INTEGER_TYPE_UNSIGNED) {
+	if (integerType == INTEGER_TYPE_UNSIGNED) {
 		pStack->X = pStack->Y >> pStack->X;
 	} else {
 		(SIGNED_NUMBER)pStack->X = (SIGNED_NUMBER)pStack->Y >> pStack->X;
 	}
-	DropY(pStack);
-	fEnter = FALSE;
+	DropIntegerY(pStack);
+	*entering = FALSE;
 }
 
 
@@ -1306,10 +1128,10 @@ void RightShiftOp(PSTACK pStack)
 *
 */
 
-void UnaryLeftShiftOp(PSTACK pStack)
+static void UnaryLeftShiftOp(PSTACK pStack, BOOL *entering)
 {
 	pStack->X = pStack->X << 1;
-	fEnter = FALSE;
+	*entering = FALSE;
 }
 
 
@@ -1321,18 +1143,18 @@ void UnaryLeftShiftOp(PSTACK pStack)
 *
 */
 
-void UnaryRightShiftOp(PSTACK pStack)
+static void UnaryRightShiftOp(PSTACK pStack, BOOL *entering, USHORT integerType)
 {
 	//
 	//  Right shift is arithmetic if signed.
 	//
 	
-	if (usIntegerType == INTEGER_TYPE_UNSIGNED) {
+	if (integerType == INTEGER_TYPE_UNSIGNED) {
 		pStack->X = pStack->X >> 1;
 	} else {
 		(SIGNED_NUMBER)pStack->X = (SIGNED_NUMBER)pStack->X >> 1;
 	}
-	fEnter = FALSE;
+	*entering = FALSE;
 }
 
 
@@ -1345,22 +1167,21 @@ void UnaryRightShiftOp(PSTACK pStack)
 *
 */
 
-void EnterOp(PSTACK pStack)
+static void EnterOp(INTEGER_STATE *state, BOOL *entering)
 {
-	if (fEnter) {
-		fEnter = FALSE;
+	PSTACK pStack = &state->Stack;
+	if (*entering) {
+		*entering = FALSE;
 		
 		//
 		//	Cast the number: for signed operations, this
 		//	will sign extend the full number.
 		//
 		
-		CastNumber(&pStack->X);
+		CastNumber(state, &pStack->X);
 		
 	} else {
-		pStack->T = pStack->Z;
-		pStack->Z = pStack->Y;
-		pStack->Y = pStack->X;
+		DuplicateIntegerX(pStack);
 	}
 }
 
@@ -1371,13 +1192,10 @@ void EnterOp(PSTACK pStack)
 *
 */
 
-void DropOp(PSTACK pStack)
+static void DropOp(PSTACK pStack, BOOL *entering)
 {
-	pStack->X = pStack->Y;
-	pStack->Y = pStack->Z;
-	pStack->Z = pStack->T;
-	pStack->T = 0;
-	fEnter = FALSE;
+	DropIntegerX(pStack);
+	*entering = FALSE;
 }
 
 
@@ -1390,108 +1208,195 @@ void DropOp(PSTACK pStack)
 *
 */
 
-void BackSpaceOp(PSTACK pStack)
+static void BackSpaceOp(INTEGER_STATE *state)
 {
-	if ((usIntegerType != INTEGER_TYPE_UNSIGNED) && (Radix == 10))
+	PSTACK pStack = &state->Stack;
+	if ((state->IntegerType != INTEGER_TYPE_UNSIGNED) && (state->Radix == 10))
 		(SIGNED_NUMBER)(pStack->X) =
-		(SIGNED_NUMBER)(pStack->X) / (signed short)Radix;
+		(SIGNED_NUMBER)(pStack->X) / (signed short)state->Radix;
 	else	// unsigned digit entry mode
-		pStack->X = pStack->X / Radix;
+		pStack->X = pStack->X / state->Radix;
 }
 
 
-/*** CalcIt -- Decide which operation to perform
-*
-* ENTRY    - pStack
-*			 dwOperation = the operation to perform
-*			 hwnd = handle to calculator window
-* EXIT	   - none
-* SYNOPSIS - Delegates authority to one of the Op routines.
-*
-*/
-
-void CalcIt(PSTACK pStack, DWORD dwOperation, HWND hwnd)
+// Digit entry keeps the raw value in X until commit. Operations instead
+// recast X before repainting, even when they leave the stack unchanged.
+CALCULATOR_RESULT IntegerCommand(INTEGER_STATE *state, DWORD dwOperation, BOOL *entering,
+                                BOOL *error, CALCULATOR_REPORT_ERROR reportError, void *context)
 {
-	//	  DebugPrintf("CalcIt(%u)\n", dwOperation);
+	PSTACK pStack = &state->Stack;
+	UCHAR ch = (UCHAR)dwOperation;
+	USHORT radix = state->Radix;
+	CALCULATOR_RESULT result = CALCULATOR_REDRAW;
+
+	if (IsBaseDigit(ch, radix)) {
+		USHORT digit = (USHORT)(ch - (isdigit(ch) ? '0' : 'A' - 10));
+		if (!*entering) {
+			EnterOp(state, entering);
+			pStack->X = 0;
+			*entering = TRUE;
+		}
+		if (!NumTest(pStack->X, radix, digit, state->IntegerType, state->WordSize))
+			return CALCULATOR_ENTRY_REJECTED;
+		// In signed decimal, appending to a negative X extends its magnitude.
+		if (radix == 10 && state->IntegerType != INTEGER_TYPE_UNSIGNED &&
+			(SIGNED_NUMBER)pStack->X < 0)
+			pStack->X = radix * pStack->X - digit;
+		else
+			pStack->X = radix * pStack->X + digit;
+		return CALCULATOR_REDRAW;
+	}
 	
 	switch(dwOperation) {
-	case ENTER: 					EnterOp(pStack);
+	case ENTER: 					EnterOp(state, entering);
 		break;
-	case SWAP_KEY:					SwapOp(pStack);
+	case SWAP_KEY:					SwapOp(pStack, entering);
 		break;
-	case PLUS_KEY:					AddOp(pStack);
+	case PLUS_KEY:					AddOp(pStack, entering);
 		break;
-	case MINUS_KEY: 				SubtractOp(pStack);
+	case MINUS_KEY: 				SubtractOp(pStack, entering);
 		break;
-	case UNARY_PLUS_KEY:			UnaryAddOp(pStack);
+	case UNARY_PLUS_KEY:			UnaryAddOp(pStack, entering);
 		break;
-	case UNARY_MINUS_KEY:			UnarySubtractOp(pStack);
+	case UNARY_MINUS_KEY:			UnarySubtractOp(pStack, entering);
 		break;
-	case MULT_KEY:					MultiplyOp(pStack);
+	case MULT_KEY:					MultiplyOp(pStack, entering);
 		break;
-	case DIV_KEY:					DivideOp(pStack);
+	case DIV_KEY:					DivideOp(pStack, entering, reportError, context);
 		break;
-	case MOD_KEY:					ModOp(pStack);
+	case MOD_KEY:					ModOp(pStack, entering, reportError, context);
 		break;
-	case AND_KEY:					AndOp(pStack);
+	case AND_KEY:					AndOp(pStack, entering);
 		break;
-	case OR_KEY:					OrOp(pStack);
+	case OR_KEY:					OrOp(pStack, entering);
 		break;
-	case XOR_KEY:					XorOp(pStack);
+	case XOR_KEY:					XorOp(pStack, entering);
 		break;
-	case LEFT_SHIFT_KEY:			LeftShiftOp(pStack);
+	case LEFT_SHIFT_KEY:			LeftShiftOp(pStack, entering);
 		break;
-	case RIGHT_SHIFT_KEY:			RightShiftOp(pStack);
+	case RIGHT_SHIFT_KEY:			RightShiftOp(pStack, entering, state->IntegerType);
 		break;
-	case UNARY_LEFT_SHIFT_KEY:		UnaryLeftShiftOp(pStack);
+	case UNARY_LEFT_SHIFT_KEY:		UnaryLeftShiftOp(pStack, entering);
 		break;
-	case UNARY_RIGHT_SHIFT_KEY:		UnaryRightShiftOp(pStack);
+	case UNARY_RIGHT_SHIFT_KEY:		UnaryRightShiftOp(pStack, entering, state->IntegerType);
 		break;
-	case NEGATE_KEY:				NegOp(pStack);
+	case NEGATE_KEY:				NegOp(pStack, entering);
 		break;
-	case NOT_KEY:					NotOp(pStack);
+	case NOT_KEY:					NotOp(pStack, entering);
 		break;
-	case BACKSPACE_KEY: 			BackSpaceOp(pStack);
+	case BACKSPACE_KEY: 			BackSpaceOp(state);
 		break;
-	case DELETE_KEY:				DropOp(pStack);
+	case DELETE_KEY:				DropOp(pStack, entering);
 		break;
-	case ROLL_DOWN_KEY: 			RollDownOp(pStack);
+	case ROLL_DOWN_KEY: 			RollDownOp(pStack, entering);
 		break;
-	case KILO_KEY:					KiloOp(pStack);
+	case KILO_KEY:					KiloOp(pStack, entering);
 		break;
-	case TOGGLE_BASE_KEY:			ChangeBase(LastRadix);
+	case TOGGLE_BASE_KEY:			SetIntegerBase(state, state->LastRadix, error);
 		break;
 		
-	case IDM_BINARY:		ChangeBase(2);
+	case IDM_BINARY:		SetIntegerBase(state, 2, error);
 		break;
-	case IDM_OCTAL: 		ChangeBase(8);
+	case IDM_OCTAL: 		SetIntegerBase(state, 8, error);
 		break;
-	case IDM_DECIMAL:		ChangeBase(10);
+	case IDM_DECIMAL:		SetIntegerBase(state, 10, error);
 		break;
-	case IDM_HEXADECIMAL:	ChangeBase(16);
+	case IDM_HEXADECIMAL:	SetIntegerBase(state, 16, error);
 		break;
-	case IDM_WORD_SIZE_8:	ChangeWordSize(pStack, 8);
+	case IDM_WORD_SIZE_8:	ChangeWordSize(state, 8, error);
 		break;
-	case IDM_WORD_SIZE_16:	ChangeWordSize(pStack, 16);
+	case IDM_WORD_SIZE_16:	ChangeWordSize(state, 16, error);
 		break;
-	case IDM_WORD_SIZE_32:	ChangeWordSize(pStack, 32);
+	case IDM_WORD_SIZE_32:	ChangeWordSize(state, 32, error);
 		break;
-	case IDM_WORD_SIZE_64:	ChangeWordSize(pStack, 64);
+	case IDM_WORD_SIZE_64:	ChangeWordSize(state, 64, error);
 		break;
 		
 	case IDM_INTEGER_TYPE_UNSIGNED:
 	case IDM_INTEGER_TYPE_1S:
 	case IDM_INTEGER_TYPE_2S:
-		ChangeIntegerType(pStack, dwOperation, hwnd);
+		ChangeIntegerType(state, dwOperation);
 		break;
-		
-	case IDM_FLOAT:
-		usCalcMode = CALC_MODE_FLOAT;
+
+	default:
+		*error = TRUE;
+		result = CALCULATOR_UNKNOWN_COMMAND;
+		break;
+	}
+
+	CastNumber(state, &pStack->X);
+	return result;
+}
+
+CALCULATOR_RESULT CalculatorCommand(CALCULATOR_STATE *state, DWORD command,
+                                   CALCULATOR_REPORT_ERROR reportError, void *context)
+{
+	switch (state->Mode) {
+	case CALC_MODE_BINARY:
+		if (command == IDM_FLOAT) {
+			state->Mode = CALC_MODE_FLOAT;
+			return CALCULATOR_MODE_CHANGED;
+		}
+		return IntegerCommand(&state->Integer, command, &state->Entering, &state->Error,
+		                      reportError, context);
+	case CALC_MODE_FLOAT: {
+		USHORT radix;
+		switch (command) {
+		case IDM_BINARY:      radix = 2;  break;
+		case IDM_OCTAL:       radix = 8;  break;
+		case IDM_DECIMAL:     radix = 10; break;
+		case IDM_HEXADECIMAL: radix = 16; break;
+		default:
+			return FloatCommand(&state->Float, command, &state->Entering, &state->Error,
+			                    reportError, context);
+		}
+		// Returning to integer mode does not commit entry, recast X, or
+		// depend on whether the requested radix is allowed at this width.
+		SetIntegerBase(&state->Integer, radix, &state->Error);
+		state->Mode = CALC_MODE_BINARY;
+		return CALCULATOR_MODE_CHANGED;
+	}
+	default:
+		state->Error = TRUE;
+		return CALCULATOR_UNKNOWN_COMMAND;
+	}
+}
+
+static void ShowCalculatorError(void *context, const char *message)
+{
+	(void)context;
+	ErrorBox("%s", message);
+}
+
+void RunCalculatorCommand(HWND hwnd, DWORD command)
+{
+	CALCULATOR_RESULT result = CalculatorCommand(&Calculator, command, ShowCalculatorError, NULL);
+	if (result == CALCULATOR_MODE_CHANGED) {
+		if (Calculator.Mode == CALC_MODE_BINARY)
+			bQuit = FALSE;
 		PostMessage(hwnd, WM_COMMAND, IDM_CHANGE_MODE, 0);
-		return; 	// don't redraw the stack display
-		
-		break;
-		
+		return;
+	}
+	if (result == CALCULATOR_ENTRY_REJECTED) {
+		DebugPrintf("%s\n", Calculator.Mode == CALC_MODE_BINARY
+		            ? "Overflow, don't add digit"
+		            : "Couldn't add character to entry string.");
+		return;
+	}
+	if (result == CALCULATOR_UNKNOWN_COMMAND)
+		DebugPrintf("Don't recognize %u operation\n", command);
+	RedrawDisplay(hDisplay);
+}
+
+// Keep commands that affect the window or clipboard here. Dispatch numeric
+// commands using the same state and flags that painting and persistence see.
+static void CalcIt(DWORD dwOperation, HWND hwnd)
+{
+	PSTACK pStack = &Calculator.Integer.Stack;
+	USHORT Radix = Calculator.Integer.Radix;
+	USHORT usIntegerType = Calculator.Integer.IntegerType;
+
+	switch(dwOperation) {
 	case IDM_HELP_ABOUT:
 		DialogBox(GetModuleHandle(NULL), "AboutBox", hwnd,
 			About);
@@ -1535,17 +1440,16 @@ void CalcIt(PSTACK pStack, DWORD dwOperation, HWND hwnd)
 		break;
 		
 	default:
-		DebugPrintf("Don't recognize %u operation\n", dwOperation);
-		ErrorFlag = TRUE;
-		break;
+		RunCalculatorCommand(hwnd, dwOperation);
+		return;
 	}
 		
 	//
-	//	Recast the number in X according to the current wordsize.
-	//	This will remove extra precision from the 64bit base number.
+	// Clipboard and help actions also recast X on return. A mode switch
+	// instead leaves the stack alone and redraws only the recreated window.
 	//
 		
-	CastNumber(&pStack->X);
+	CastNumber(&Calculator.Integer, &pStack->X);
 		
 	RedrawDisplay(hDisplay);
 }
@@ -1579,7 +1483,7 @@ BOOL HelpKeys( DWORD dwOperation, HANDLE hInst, HWND hwnd ,
 
     if ( dwOperation == IDD_DISPLAY )
     {
-        switch ( Radix )
+        switch ( Calculator.Integer.Radix )
         {
         case 2:
             dwOperation = IDS_BINARY;
@@ -1670,6 +1574,7 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 *		   Radix = current entry radix
 *		   Digit = digit to add
 *		   usIntegerType = flag specifying type of integer we are entering
+*		   WordSize = maximum width of the value in bits
 *
 * OUTPUTS: Returns TRUE if we have room to put the digit in the number
 *		   without overflow.
@@ -1678,19 +1583,19 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 *	   if ((MAXULONG - Digit) / Radix) >= X: return TRUE
 */
 
-BOOL NumTest(NUMBER X, USHORT Radix, USHORT Digit, USHORT usIntegerType) {
+static BOOL NumTest(NUMBER X, USHORT Radix, USHORT Digit, USHORT usIntegerType, USHORT WordSize) {
 	if ((usIntegerType != INTEGER_TYPE_UNSIGNED) && (Radix == 10)) {
 		// signed decimal entry is broken into positive/negative cases
 		if (((SIGNED_NUMBER)X) < 0) { // signed number is negative
-			return (((SIGNED_NUMBER)(MinSignedWordSize() + Digit) / Radix) <=
+			return (((SIGNED_NUMBER)(MinSignedWordSize(WordSize) + Digit) / Radix) <=
 				((SIGNED_NUMBER)X));
 		}
 		else {	// signed number is positive.
-			return (((MaxSignedWordSize() - Digit) / Radix) >= ((SIGNED_NUMBER)X));
+			return (((MaxSignedWordSize(WordSize) - Digit) / Radix) >= ((SIGNED_NUMBER)X));
 		}
 	}
 	else {		// unsigned digit entry, don't worry about +/-
-		return (((MaxWordSize() - Digit) / Radix) >= X);
+		return (((MaxWordSize(WordSize) - Digit) / Radix) >= X);
 	}
 }
 
@@ -1709,7 +1614,7 @@ BOOL NumTest(NUMBER X, USHORT Radix, USHORT Digit, USHORT usIntegerType) {
 * SUMMARY: Builds the number, a character at a time, repeatedly calling
 *		   NumTest to validate each character.
 */
-BOOL StrNumTest(PUCHAR lpNumStr, USHORT Radix, USHORT usIntegerType,
+BOOL StrNumTest(PUCHAR lpNumStr, USHORT Radix, USHORT usIntegerType, USHORT WordSize,
 				PNUMBER pNumber) {
 	NUMBER Number = 0;
 	size_t dwStrLength = strlen(lpNumStr);
@@ -1735,7 +1640,7 @@ BOOL StrNumTest(PUCHAR lpNumStr, USHORT Radix, USHORT usIntegerType,
 
 		DebugPrintf("Char: %c, Digit: 0x%x\n", lpNumStr[i], Digit);
 		if ((Digit < Radix) &&
-			NumTest(Number, Radix, Digit, usIntegerType)) {
+			NumTest(Number, Radix, Digit, usIntegerType, WordSize)) {
 		/*
 		* Signed decimal numbers need special treatment if
 		* they are negative.
@@ -1798,7 +1703,7 @@ void SetKeypadVisible(HWND hwnd, BOOL fShow)
 *		   shouldn't be called within the context of a window message to
 *		   the dialog.
 */
-DWORD CreateCalc(USHORT CalcMode) {
+DWORD CreateCalc(CALC_MODE CalcMode) {
 	HWND hwnd;
 	DWORD rc;
 	LPTSTR lpszDlgTemp;
@@ -1807,9 +1712,9 @@ DWORD CreateCalc(USHORT CalcMode) {
     struct ENUMCHILDSTRUCT ecs;
 #endif
 	
-	usCalcMode = CalcMode;	// update global CalcMode status
+	Calculator.Mode = CalcMode;
 	
-	switch (usCalcMode) {
+	switch (Calculator.Mode) {
 	case CALC_MODE_BINARY:
 		lpszDlgTemp = MAKEINTRESOURCE(RPN_DIALOG);
 		break;
@@ -1862,7 +1767,7 @@ DWORD CreateCalc(USHORT CalcMode) {
 	
 	hwndDialog = hwnd;	  // set global dialog handle for ErrorBox use
 	
-	switch (usCalcMode) {
+	switch (Calculator.Mode) {
 	case CALC_MODE_BINARY:
 		DisplayItem = IDD_DISPLAY;
 		break;
@@ -1951,7 +1856,7 @@ BOOL ClipboardCopy(NUMBER Number, USHORT Radix, USHORT usIntegerType) {
 	size_t	dwLength;
 	
 	
-	IntToA(Number, StrNum, sizeof(StrNum), Radix, usIntegerType, FALSE);
+	IntToA(Number, StrNum, sizeof(StrNum), Radix, usIntegerType, Calculator.Integer.WordSize, FALSE);
 	
 	hClipboardMem = GlobalAlloc(GHND | GMEM_DDESHARE,
 		(dwLength = strlen(StrNum)) + 1);
@@ -2027,10 +1932,10 @@ BOOL ClipboardPaste(PNUMBER pNumber, USHORT Radix, USHORT usIntegerType) {
 			pTemp++;
 		*pTemp = '\0';
 		
-		if (StrNumTest(pClipboardMem, Radix, usIntegerType, &Number)) {
+		if (StrNumTest(pClipboardMem, Radix, usIntegerType, Calculator.Integer.WordSize, &Number)) {
 			// valid number in Number, store and cast
 			*pNumber = Number;
-			CastNumber(pNumber);
+			CastNumber(&Calculator.Integer, pNumber);
 		}
 		else {	// warn user that the clipboard doesn't contain a valid number
 				ErrorBox("The clipboard does not contain a\n\
