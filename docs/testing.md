@@ -1,8 +1,13 @@
 # Testing RPN
 
+The automated baseline is a guardrail for evolving RPN, not a requirement
+to preserve every legacy behavior. When changing behavior intentionally,
+add or update focused assertions for the new contract and keep unrelated
+checks in place. The follow-up matrices are not prerequisites for starting
+feature work.
+
 See [Calculator design](design.md) for the architecture and compatibility
-constraints. This document distinguishes what can run now from the planned
-coverage. The legacy reference is `cf3a8b903afc298fef72a422e47c327fa2714399`.
+constraints. The legacy reference is `cf3a8b903afc298fef72a422e47c327fa2714399`.
 
 ## Build and run the console checks
 
